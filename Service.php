@@ -796,6 +796,9 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             'parent' => $data['oid'],
         );
 
+        // close anti
+        Helper::options()->commentsAntiSpam = false;
+
         // widget
         $editor = $this->singletonWidget(
             'Widget_Feedback', NULL, $request
