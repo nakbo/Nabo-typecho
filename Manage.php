@@ -56,7 +56,7 @@ include 'menu.php';
                 <section id="change-password">
                     <h3><?php _e("相关链接"); ?></h3>
                     <button onclick="window.open('https://nabo.krait.cn/')" class="btn btn-nabo">南博官网</button>
-                    <button onclick="window.open('https://docs.nabo.krait.cn/#/start')" class="btn btn-nabo">使用文档
+                    <button onclick="window.open('https://nabo.krait.cn/docs/#/start')" class="btn btn-nabo">使用文档
                     </button>
                     <style>
                         .btn-nabo {
