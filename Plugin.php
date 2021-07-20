@@ -5,7 +5,7 @@
  *
  * @package Nabo
  * @author 陆之岇
- * @version 4.0.0
+ * @version 4.0
  * @link https://github.com/krait-team/Nabo-typecho
  */
 class Nabo_Plugin implements Typecho_Plugin_Interface
