@@ -812,12 +812,15 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $comment = $ref->getMethod('comment');
         $comment->setAccessible(true);
 
-        // comment
+        ob_start();
         try {
+            // comment
             $comment->invoke($editor);
         } catch (Exception $e) {
+            ob_end_clean();
             return new Exception($e->getMessage());
         }
+        ob_end_clean();
 
         return Nabo_Format::discussOf(
             end($editor->stack)
