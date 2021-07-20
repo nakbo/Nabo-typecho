@@ -361,7 +361,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         } else if ($type == 'page') {
             $this->checkAccess('editor');
         } else {
-            return new Exception("异常请求");
+            return new Exception('异常请求');
         }
 
         // select
@@ -431,7 +431,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         } else if ($type == 'page') {
             $this->checkAccess('editor');
         } else {
-            return new Exception("异常请求");
+            return new Exception('异常请求');
         }
 
         if (count($row = $this->db->fetchRow($this->db->select()
@@ -465,7 +465,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         } else if ($type == 'page') {
             $this->checkAccess('editor');
         } else {
-            return new Exception("异常请求");
+            return new Exception('异常请求');
         }
 
         // do
@@ -840,7 +840,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (empty($data['did'])) {
-            return new Exception("评论不存在");
+            return new Exception('评论不存在');
         }
 
         $request = array(
@@ -896,11 +896,11 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($did)) {
-            return new Exception("评论不存在");
+            return new Exception('评论不存在');
         }
 
         if (empty($status)) {
-            return new Exception("不必更新的情况");
+            return new Exception('不必更新的情况');
         }
 
         $editor = $this->singletonWidget('Widget_Comments_Edit');
@@ -1077,7 +1077,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (empty($data['mid'])) {
-            return new Exception("请求错误");
+            return new Exception('请求错误');
         }
 
         // fetch
@@ -1126,7 +1126,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (empty($data['mid'])) {
-            return new Exception("请求错误");
+            return new Exception('请求错误');
         }
 
         // fetch
@@ -1167,7 +1167,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($mid)) {
-            return new Exception("请求错误");
+            return new Exception('请求错误');
         }
 
         $this->singletonWidget(
@@ -1190,7 +1190,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($mid)) {
-            return new Exception("请求错误");
+            return new Exception('请求错误');
         }
 
         $this->singletonWidget(
@@ -1276,7 +1276,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess();
 
         if (!is_array($mid)) {
-            return new Exception("缺少必要参数");
+            return new Exception('缺少必要参数');
         }
 
         // widget
@@ -1317,7 +1317,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess();
 
         if (empty($data['mid']) || empty($data['name'])) {
-            return new Exception("确实必要参数", 404);
+            return new Exception('缺少必要参数', 404);
         }
 
         $request = array(
@@ -1340,7 +1340,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 end($editor->stack)
             );
         }
-        return new Exception("更新失败");
+        return new Exception('更新失败');
     }
 
     /**
@@ -1356,7 +1356,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('administrator');
 
         if (empty($struct['former']) || empty($struct['last']) || empty($struct['object'])) {
-            return new Exception("确实必要参数", 404);
+            return new Exception('缺少必要参数', 404);
         } else {
             $former = $struct['former'];
             $last = $struct['last'];
@@ -1374,27 +1374,27 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             ];
             if (in_array($object, $array)) {
                 $prefix = $this->db->getPrefix();
-                $obj = explode("|", $object);
+                $obj = explode('|', $object);
                 $type = $obj[0];
                 $aim = $obj[1];
                 switch ($type) {
-                    case "post":
-                    case "page":
+                    case 'post':
+                    case 'page':
                         $data_name = $prefix . 'contents';
                         $this->db->query("UPDATE `{$data_name}` SET `{$aim}`=REPLACE(`{$aim}`,'{$former}','{$last}') WHERE type='{$type}'");
                         break;
-                    case "field":
+                    case 'field':
                         $data_name = $prefix . 'fields';
                         $this->db->query("UPDATE `{$data_name}` SET `str_value`=REPLACE(`str_value`,'{$former}','{$last}')  WHERE name='{$aim}'");
                         break;
-                    case "comment":
+                    case 'comment':
                         $data_name = $prefix . 'comments';
                         $this->db->query("UPDATE `{$data_name}` SET `{$aim}`=REPLACE(`{$aim}`,'{$former}','{$last}')");
                 }
-                return "替换成功";
+                return '替换成功';
 
             } else {
-                return new Exception("不含此参数,无法替换", 202);
+                return new Exception('不含此参数,无法替换', 202);
             }
         }
     }
@@ -1418,10 +1418,10 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         Nabo_Format::pagingOf($struct, $page, $size);
 
         $list = $this->pluginHandle('Nabo_Dynamics')
-            ->trigger($dynamicPluggable)
+            ->trigger($pluggable)
             ->select($this->liteuser->uid(), $struct['status'], $size, $page);
 
-        if ($dynamicPluggable) {
+        if ($pluggable) {
             return Nabo_Format::dynamicsOf($list);
         }
 
@@ -1441,21 +1441,19 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($data)) {
-            return new Exception("非法请求");
+            return new Exception('非法请求');
         }
-
 
         if (empty($data['text'])) {
             return new Exception('无动态内容', 404);
         }
-        $date = $this->options->time;
 
-        $dynamic = [
+        $dynamic = array(
             'authorId' => $this->liteuser->uid(),
             'text' => $data['text'],
             'status' => $data['status'],
-            'modified' => $date
-        ];
+            'modified' => $date = $this->options->time
+        );
 
         if ($insert = empty($did = $data['did'])) {
             $dynamic['created'] = $date;
@@ -1464,9 +1462,9 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         }
 
         $result = $this->pluginHandle('Nabo_Dynamics')
-            ->trigger($dynamicPluggable)
+            ->trigger($pluggable)
             ->{$insert ? 'insert' : 'modify'}($this->liteuser->uid(), $dynamic);
-        if ($dynamicPluggable) {
+        if ($pluggable) {
             return Nabo_Format::dynamicOf($result);
         }
 
@@ -1486,14 +1484,14 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($did)) {
-            return new Exception("非法请求");
+            return new Exception('非法请求');
         }
 
         $deleteCount = $this->pluginHandle('Nabo_Dynamics')
-            ->trigger($dynamicPluggable)
+            ->trigger($pluggable)
             ->delete($this->liteuser->uid(), $did);
 
-        if ($dynamicPluggable) {
+        if ($pluggable) {
             return $deleteCount;
         }
 
@@ -1545,15 +1543,15 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($data)) {
-            return new Exception("非法请求", 403);
+            return new Exception('非法请求', 403);
         }
 
         if (!isset($data['name'])) {
-            return new Exception("没有设定名字");
+            return new Exception('没有设定名字');
         }
 
         if (!isset($data['url'])) {
-            return new Exception("没有设定链接地址");
+            return new Exception('没有设定链接地址');
         }
 
         $link = array(
@@ -1595,7 +1593,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('editor');
 
         if (!is_array($lid)) {
-            return new Exception("缺少参数");
+            return new Exception('缺少参数');
         }
 
         $deleteCount = 0;
@@ -1625,17 +1623,17 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         }
 
         if (!isset($data['pluginName'])) {
-            return new Exception("缺少必要参数", 403);
+            return new Exception('缺少必要参数', 403);
         }
 
         if (!isset($this->options->plugins['activated'][$data['pluginName']])) {
-            return new Exception("没有启用插件", 403);
+            return new Exception('没有启用插件', 403);
         }
 
         $className = "{$data['pluginName']}_Plugin";
         if ($data['method'] == 'set') {
             if (empty($data['settings'])) {
-                return new Exception("settings 不规范");
+                return new Exception('settings 不规范');
             }
 
             $settings = json_decode($data['settings'], true);
@@ -1653,7 +1651,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
             /** 验证表单 */
             if ($form->validate()) {
-                return new Exception("表中有数据不符合配置要求");
+                return new Exception('表中有数据不符合配置要求');
             }
 
             $settings = $form->getAllRequest();
@@ -1675,7 +1673,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         );
         $form = $config->config();
         $form->setAction(NULL);
-        $form->setAttribute("id", "form");
+        $form->setAttribute('id', 'form');
         $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
         $form->render();
 
@@ -1692,7 +1690,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('administrator');
 
         if (!isset($data['option'])) {
-            return new Exception("缺少必要参数", 403);
+            return new Exception('缺少必要参数', 403);
         }
 
         if ($data['method'] == 'set') {
@@ -1702,7 +1700,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             }
 
             if (empty($data['settings'])) {
-                return new Exception("settings 不规范");
+                return new Exception('settings 不规范');
             }
             $settings = json_decode($data['settings'], true);
 
@@ -1712,13 +1710,13 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 NULL,
                 $settings
             );
-            if ($data['option'] == "profile") {
+            if ($data['option'] == 'profile') {
                 $config->updateProfile();
-            } else if ($data['option'] == "options") {
+            } else if ($data['option'] == 'options') {
                 $config->updateOptions();
-            } else if ($data['option'] == "password") {
+            } else if ($data['option'] == 'password') {
                 $config->updatePassword();
-//            } else if ($struct['option'] == "personal") {
+//            } else if ($struct['option'] == 'personal') {
 //                $config->updatePersonal();
             }
             ob_end_clean();
@@ -1731,22 +1729,27 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             'Widget_Users_Profile'
         );
 
-        if ($data['option'] == "profile") {
-            $form = $config->profileForm();
-        } else if ($data['option'] == "options") {
-            $form = $config->optionsForm();
-        } else if ($data['option'] == "password") {
-            $form = $config->passwordForm();
-//            } else if ($struct['option'] == "personal") {
-//                $form = $config->personalFormList();
-        } else {
-            return new Exception("option 不规范");
+        if (empty($data['settings'])) {
+            return new Exception('settings 不规范');
         }
+        $settings = json_decode($data['settings'], true);
 
-        $form->setAction(NULL);
-        $form->setAttribute("id", "form");
-        $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
-        $form->render();
+        ob_start();
+        $config = $this->singletonWidget(
+            'Widget_Users_Profile',
+            NULL,
+            $settings
+        );
+        if ($data['option'] == 'profile') {
+            $config->updateProfile();
+        } else if ($data['option'] == 'options') {
+            $config->updateOptions();
+        } else if ($data['option'] == 'password') {
+            $config->updatePassword();
+//            } else if ($struct['option'] == 'personal') {
+//                $config->updatePersonal();
+        }
+        ob_end_clean();
 
         return ob_get_clean();
     }
@@ -1761,19 +1764,19 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->checkAccess('administrator');
 
         if (!isset($data['option'])) {
-            return new Exception("缺少必要参数", 403);
+            return new Exception('缺少必要参数', 403);
         }
 
-        if ($data['option'] == "general") {
-            $alias = "Widget_Options_General";
-        } else if ($data['option'] == "discussion") {
-            $alias = "Widget_Options_Discussion";
-        } else if ($data['option'] == "reading") {
-            $alias = "Widget_Options_Reading";
-        } else if ($data['option'] == "permalink") {
-            $alias = "Widget_Options_Permalink";
+        if ($data['option'] == 'general') {
+            $alias = 'Widget_Options_General';
+        } else if ($data['option'] == 'discussion') {
+            $alias = 'Widget_Options_Discussion';
+        } else if ($data['option'] == 'reading') {
+            $alias = 'Widget_Options_Reading';
+        } else if ($data['option'] == 'permalink') {
+            $alias = 'Widget_Options_Permalink';
         } else {
-            return new Exception("option 不规范");
+            return new Exception('option 不规范');
         }
 
         if ($data['method'] == 'set') {
@@ -1782,7 +1785,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             }
 
             if (empty($data['settings'])) {
-                return new Exception("settings 不规范");
+                return new Exception('settings 不规范');
             }
             $settings = json_decode($data['settings'], true);
 
@@ -1792,13 +1795,13 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 null,
                 $settings
             );
-            if ($data['option'] == "general") {
+            if ($data['option'] == 'general') {
                 $config->updateGeneralSettings();
-            } else if ($data['option'] == "discussion") {
+            } else if ($data['option'] == 'discussion') {
                 $config->updateDiscussionSettings();
-            } else if ($data['option'] == "reading") {
+            } else if ($data['option'] == 'reading') {
                 $config->updateReadingSettings();
-            } else if ($data['option'] == "permalink") {
+            } else if ($data['option'] == 'permalink') {
                 $config->updatePermalinkSettings();
             }
             ob_end_clean();
@@ -1810,7 +1813,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $config = $this->singletonWidget($alias);
         $form = $config->form();
         $form->setAction(NULL);
-        $form->setAttribute("id", "form");
+        $form->setAttribute('id', 'form');
         $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
         $form->render();
 
@@ -1839,7 +1842,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         if ($data['method'] == 'set') {
             if (empty($data['settings'])) {
-                return new Exception("settings 不规范");
+                return new Exception('settings 不规范');
             }
 
             $settings = json_decode($data['settings'], true);
@@ -1859,7 +1862,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
             /** 验证表单 */
             if ($form->validate()) {
-                return new Exception("表中有数据不符合配置要求");
+                return new Exception('表中有数据不符合配置要求');
             }
 
             $settings = $form->getAllRequest();
@@ -1896,7 +1899,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         );
         $form = $config->config();
         $form->setAction(NULL);
-        $form->setAttribute("id", "form");
+        $form->setAttribute('id', 'form');
         $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
         $form->render();
 
@@ -1919,15 +1922,15 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         if ($activatedPlugins->have() || !empty($activatedPlugins->activatedPlugins)) {
             while ($activatedPlugins->next()) {
                 $list[$activatedPlugins->name] = array(
-                    "activated" => true,
-                    "name" => $activatedPlugins->name,
-                    "title" => $activatedPlugins->title,
-                    "dependence" => $activatedPlugins->dependence,
-                    "description" => strip_tags($activatedPlugins->description),
-                    "version" => $activatedPlugins->version,
-                    "homepage" => $activatedPlugins->homepage,
-                    "author" => $activatedPlugins->author,
-                    "config" => $activatedPlugins->config
+                    'activated' => true,
+                    'name' => $activatedPlugins->name,
+                    'title' => $activatedPlugins->title,
+                    'dependence' => $activatedPlugins->dependence,
+                    'description' => strip_tags($activatedPlugins->description),
+                    'version' => $activatedPlugins->version,
+                    'homepage' => $activatedPlugins->homepage,
+                    'author' => $activatedPlugins->author,
+                    'config' => $activatedPlugins->config
                 );
             }
         }
@@ -1937,15 +1940,15 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         if ($deactivatedPlugins->have() || !$activatedPlugins->have()) {
             while ($deactivatedPlugins->next()) {
                 $list[$deactivatedPlugins->name] = array(
-                    "activated" => false,
-                    "name" => $deactivatedPlugins->name,
-                    "title" => $deactivatedPlugins->title,
-                    "dependence" => true,
-                    "description" => strip_tags($deactivatedPlugins->description),
-                    "version" => $deactivatedPlugins->version,
-                    "homepage" => $deactivatedPlugins->homepage,
-                    "author" => $deactivatedPlugins->author,
-                    "config" => false
+                    'activated' => false,
+                    'name' => $deactivatedPlugins->name,
+                    'title' => $deactivatedPlugins->title,
+                    'dependence' => true,
+                    'description' => strip_tags($deactivatedPlugins->description),
+                    'version' => $deactivatedPlugins->version,
+                    'homepage' => $deactivatedPlugins->homepage,
+                    'author' => $deactivatedPlugins->author,
+                    'config' => false
                 );
             }
         }
@@ -1954,7 +1957,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             $activatedList = $this->options->plugins['activated'];
             if (isset($activatedList['TeStore'])) {
                 $testore = $this->singletonWidget(
-                    "TeStore_Action"
+                    'TeStore_Action'
                 );
                 $storeList = array();
                 $plugins = $testore->getPluginData();
@@ -1962,27 +1965,27 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 foreach ($plugins as $plugin) {
                     $thisPlugin = $list[$plugin['pluginName']];
                     $installed = array_key_exists($plugin['pluginName'], $list);
-                    $activated = $installed ? $thisPlugin["activated"] : false;
+                    $activated = $installed ? $thisPlugin['activated'] : false;
                     $storeList[] = array(
-                        "activated" => $activated,
-                        "name" => $plugin['pluginName'],
-                        "title" => $plugin['pluginName'],
-                        "dependence" => $activated ? $thisPlugin["dependence"] : null,
-                        "description" => strip_tags($plugin['desc']),
-                        "version" => $plugin['version'],
-                        "homepage" => $plugin['pluginUrl'],
-                        "author" => strip_tags($plugin['authorHtml']),
-                        "config" => $activated ? $thisPlugin["config"] : false,
+                        'activated' => $activated,
+                        'name' => $plugin['pluginName'],
+                        'title' => $plugin['pluginName'],
+                        'dependence' => $activated ? $thisPlugin['dependence'] : null,
+                        'description' => strip_tags($plugin['desc']),
+                        'version' => $plugin['version'],
+                        'homepage' => $plugin['pluginUrl'],
+                        'author' => strip_tags($plugin['authorHtml']),
+                        'config' => $activated ? $thisPlugin['config'] : false,
 
-                        "installed" => $installed,
-                        "mark" => $plugin['mark'],
-                        "zipFile" => $plugin['zipFile'],
+                        'installed' => $installed,
+                        'mark' => $plugin['mark'],
+                        'zipFile' => $plugin['zipFile'],
                     );
                 }
 
                 return $storeList;
             } else {
-                return new Exception("你没有安装 TeStore 插件", 301);
+                return new Exception('你没有安装 TeStore 插件', 301);
             }
         } else {
             $callList = array();
@@ -2028,7 +2031,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
                 if ($data['method'] == 'activate') {
                     if ($isActivated) {
-                        return new Exception("该插件已被安装过", 401);
+                        return new Exception('该插件已被安装过', 401);
                     } else {
                         $testore->install();
                     }
@@ -2037,10 +2040,10 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 }
 
                 return Json::decode(
-                    Typecho_Cookie::get("__typecho_notice"), true
+                    Typecho_Cookie::get('__typecho_notice'), true
                 )[0];
             } else {
-                return new Exception("你没有安装 TeStore 插件", 301);
+                return new Exception('你没有安装 TeStore 插件', 301);
             }
         } else {
             $plugins = $this->singletonWidget(
@@ -2050,13 +2053,13 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             if ($data['method'] == 'activate') {
                 $plugins->activate($data['pluginName']);
 
-            } else if ($data['method'] == "deactivate") {
+            } else if ($data['method'] == 'deactivate') {
                 $plugins->deactivate($data['pluginName']);
 
             }
 
             return Json::decode(
-                Typecho_Cookie::get("__typecho_notice"), true
+                Typecho_Cookie::get('__typecho_notice'), true
             )[0];
         }
     }
@@ -2075,14 +2078,14 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         while ($themes->next()) {
             $list[] = array(
-                "activated" => $themes->activated,
-                "name" => $themes->name,
-                "title" => $themes->title,
-                "description" => strip_tags($themes->description),
-                "version" => $themes->version,
-                "homepage" => $themes->homepage,
-                "author" => $themes->author,
-                "config" => false
+                'activated' => $themes->activated,
+                'name' => $themes->name,
+                'title' => $themes->title,
+                'description' => strip_tags($themes->description),
+                'version' => $themes->version,
+                'homepage' => $themes->homepage,
+                'author' => $themes->author,
+                'config' => false
             );
         }
 
@@ -2108,9 +2111,9 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         if ($data['method'] == 'changeTheme') {
             $themes->changeTheme($data['themeName']);
-            return "外观已经改变";
+            return '外观已经改变';
         }
 
-        return new Exception("未知错误");
+        return new Exception('未知错误');
     }
 }
