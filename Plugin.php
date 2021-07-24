@@ -4,7 +4,7 @@
  * 南博插件
  *
  * @package Nabo
- * @author 陆之岇
+ * @author 南博工作室
  * @version 4.0
  * @link https://github.com/krait-team/Nabo-typecho
  */
@@ -54,7 +54,7 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
         }
 
         if (isset(Helper::options()->plugins['activated']['Aidnabo'])) {
-            throw new Typecho_Plugin_Exception(_t('Nabo插件是Aidnabo插件不可共存, 请禁用后再删除Aidnabo插件'));
+            throw new Typecho_Plugin_Exception(_t('Nabo插件和Aidnabo插件不可共存, 请禁用后再删除Aidnabo插件'));
         }
 
         $db = Typecho_Db::get();
