@@ -1,10 +1,9 @@
 <?php
-
 /**
  * @Package Kat
  * @Author 陆之岇(kraity)
- * @Team Krait Dev Team
- * @GitHub https://github.com/kraity
+ * @Studio 南博网络科技工作室
+ * @GitHub https://github.com/krait-team/kat-php
  * @Version 1.0.0
  * @Description Remote Procedure Call
  */
@@ -296,18 +295,10 @@ class Kat_Server
     {
         if (is_callable($method)) {
             return is_array($args) ? call_user_func_array($method, $args) : call_user_func($method);
-        }
-        if (is_string($method)) {
-            switch (1) {
-                case strpos($method, 'this'):
-                    return $this->callMethod([
-                        &$this, substr($method, 7)
-                    ], $args);
-                case strpos($method, 'system') :
-                    return $this->callMethod([
-                        &$this, substr($method, 9)
-                    ], $args);
-            }
+        } else if (strpos($method, 'system')) {
+            return $this->callMethod([
+                &$this, substr($method, 7)
+            ], $args);
         }
         throw new Exception('Server error, method does not exist', 404);
     }

@@ -4,8 +4,8 @@
  * 消息组件
  *
  * @Author 陆之岇(Kraity)
- * @Team Krait Dev Team
- * @GitHub https://github.com/kraity
+ * @Studio 南博网络科技工作室
+ * @GitHub https://github.com/krait-team
  */
 class Nabo_Message extends Typecho_Widget
 {

@@ -4,8 +4,8 @@
  * 行动组件
  *
  * @Author 陆之岇(Kraity)
- * @Team Krait Dev Team
- * @GitHub https://github.com/kraity
+ * @Studio 南博网络科技工作室
+ * @GitHub https://github.com/krait-team
  */
 class Nabo_Action extends Typecho_Widget implements Widget_Interface_Do
 {

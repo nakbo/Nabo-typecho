@@ -2,10 +2,10 @@
 /**
  * @Package Kat
  * @Author 陆之岇(kraity)
- * @Team Krait Dev Team
- * @GitHub https://github.com/kraity
+ * @Studio 南博网络科技工作室
+ * @GitHub https://github.com/krait-team/kat-php
  * @Version 1.0.0
- * @Description Remote Procedure Call
+ * @Description Data exchange format
  */
 
 /**
