@@ -63,6 +63,7 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
 
         if (strpos($adapterName, 'Mysql') !== false) {
             if (!$db->fetchRow($db->query("SHOW TABLES LIKE '{$prefix}nabo';", Typecho_Db::READ))) {
+                $charset = $db->getConfig()['charset'] ?: 'utf8';
                 $db->query('CREATE TABLE IF NOT EXISTS `' . $prefix . 'nabo` (
 		            `uid` INT(11) UNSIGNED NOT NULL,
 		            `uin` INT(10) UNSIGNED DEFAULT 0,
@@ -74,7 +75,7 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
 		            `allowPush` INT(1) UNSIGNED DEFAULT 0,
 		            PRIMARY KEY (`uid`),
 		            KEY `uin` (`uin`)
-		        ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;');
+		        ) DEFAULT CHARSET=' . $charset);
             }
         } else if (strpos($adapterName, 'SQLite') !== false) {
             if (!$db->fetchRow($db->query("SELECT name FROM sqlite_master WHERE TYPE='table' AND name='{$prefix}nabo';", Typecho_Db::READ))) {
