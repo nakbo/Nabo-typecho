@@ -59,17 +59,14 @@ class Nabo_Format
     }
 
     /**
-     * @param  $server
      * @param $notes
      * @return array
      */
-    public static function notesOf($server, $notes)
+    public static function notesOf($notes)
     {
         $list = [];
         foreach ($notes as $note) {
-            $list[] = self::noteOf(
-                $server->filter($note)
-            );
+            $list[] = self::noteOf($note);
         }
         return $list;
     }
@@ -82,6 +79,10 @@ class Nabo_Format
     {
         $db = Typecho_Db::get();
         $nid = intval($note['cid']);
+
+        // slug
+        $slug = $note['slug'];
+        $note['slug'] = urlencode($slug);
 
         // fields
         $fields = [];
@@ -97,6 +98,14 @@ class Nabo_Format
 
         // categories
         $categories = [];
+        $note['categories'] = $db->fetchAll($db->select()->from('table.metas')
+            ->join('table.relationships', 'table.relationships.mid = table.metas.mid')
+            ->where('table.relationships.cid = ?', $note['cid'])
+            ->where('table.metas.type = ?', 'category')
+            ->order('table.metas.order')
+        );
+        $note['category'] = empty($note['categories']) ?
+            NULL : urlencode($note['categories'][0]['slug']);
         foreach ($note['categories'] as $row) {
             $categories[] = $row['name'];
         }
@@ -112,6 +121,25 @@ class Nabo_Format
         }
         unset($row);
 
+        // date
+        $timestamp = $note['created'] + Typecho_Date::$timezoneOffset
+            - Typecho_Date::$serverTimezoneOffset;
+        $note['year'] = date('Y', $timestamp);
+        $note['month'] = date('m', $timestamp);
+        $note['day'] = date('d', $timestamp);
+
+        // permalink
+        $pathinfo = Typecho_Router::get($note['type']) ?
+            Typecho_Router::url($note['type'], $note) : '#';
+        $permalink = Typecho_Common::url($pathinfo, Helper::options()->index);
+
+        // content
+        if (isset($note['text'])) {
+            if (strpos($note['text'], '<!--markdown-->') === 0) {
+                $note['text'] = substr($note['text'], 15);
+            }
+        }
+
         return array(
             'nid' => $nid,
             'uid' => (int)$note['authorId'],
@@ -120,13 +148,13 @@ class Nabo_Format
             'content' => (string)$note['text'],
 
             'type' => (string)$note['type'],
-            'slug' => (string)$note['slug'],
+            'slug' => (string)$slug,
             'order' => (int)$note['order'],
             'status' => (string)$note['status'],
 
             'password' => (string)$note['password'],
             'template' => (string)$note['template'],
-            'permalink' => (string)$note['permalink'],
+            'permalink' => (string)$permalink,
 
             'fields' => $fields,
             'tags' => $tags,

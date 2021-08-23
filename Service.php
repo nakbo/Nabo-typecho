@@ -409,7 +409,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $select->page($page, $size);
 
         return Nabo_Format::notesOf(
-            $this, $this->db->fetchAll($select)
+            $this->db->fetchAll($select)
         );
     }
 
@@ -419,7 +419,6 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
      * @param $nid
      * @param string $type
      * @return array|Exception
-     * @throws Typecho_Widget_Exception
      * @throws Exception
      * @access public
      */
@@ -438,9 +437,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             ->from('table.contents')
             ->where('authorId = ?', $this->liteuser->uid())
             ->where('cid = ?', $nid)))) {
-            return Nabo_Format::noteOf(
-                $this->filter($row)
-            );
+            return Nabo_Format::noteOf($row);
         }
         return new Exception('不存在此文章', 403);
     }
