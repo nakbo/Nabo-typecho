@@ -24,7 +24,7 @@ class Nabo_Helper
         if (isset($this->_method[$name])) {
             return call_user_func_array($this->_method[$name], $args);
         }
-        $this->_temporary[$name] = $args;
+        $this->_temporary[$name][] = $args;
     }
 
     /**
