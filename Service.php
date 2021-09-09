@@ -495,8 +495,12 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         // note
         $note = array(
+            // base
             'type' => $type,
             'text' => $data['content'],
+
+            // status
+            'visibility' => $data['status']
         );
 
         // markdown
