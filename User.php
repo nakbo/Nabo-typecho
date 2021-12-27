@@ -78,13 +78,6 @@ class Nabo_User extends Typecho_Widget implements Widget_Interface_Do
             );
         }
 
-        // check
-        if (empty($identity['name'])) {
-            throw new Crash(
-                '无效用户名', 102
-            );
-        }
-
         // identity
         $this->identity = $identity;
     }
@@ -120,11 +113,21 @@ class Nabo_User extends Typecho_Widget implements Widget_Interface_Do
      */
     public function register()
     {
+        // name
+        $name = $this->name();
+
+        // check
+        if (empty($name)) {
+            throw new Crash(
+                '无效用户名', 102
+            );
+        }
+
         // find
         $user = $this->db->fetchRow($this->db->select()
             ->from('table.nabo')
             ->join('table.users', 'table.nabo.uid = table.users.uid', Typecho_Db::LEFT_JOIN)
-            ->where('table.users.name = ?', $this->name())->limit(1));
+            ->where('table.users.name = ?', $name)->limit(1));
 
         // check empty
         if (empty($user)) {
