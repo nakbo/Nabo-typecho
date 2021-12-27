@@ -9,116 +9,22 @@
  */
 
 /**
- * @param $object
+ * @param $any
  * @param null $name
- * @param string $kat
- * @param null $function_other
  * @return string
  */
-function kat_encode($object, $name = NULL, $kat = '', $function_other = NULL)
+function kat_encode($any, $name = null)
 {
-    switch (gettype($object)) {
-        case 'NULL':
-            $kat .= 'n';
-            if ($name != NULL) {
-                $kat .= ":$name";
-            }
-            $kat .= '()';
-            break;
-        case 'string':
-            $kat .= 's';
-            if ($name != NULL) {
-                $kat .= ":$name";
-            }
-            $kat .= '(' . preg_replace('([()^])', "^$0", $object) . ')';
-            break;
-        case 'boolean':
-            $kat .= 'b';
-            if ($name != NULL) {
-                $kat .= ":$name";
-            }
-            $kat .= '(' . ($object ? '1' : '0') . ')';
-            break;
-        case 'integer':
-            $kat .= $object > 2147483647 ? 'l' : 'i';
-            if ($name != NULL) {
-                $kat .= ":$name";
-            }
-            $kat .= '(' . $object . ')';
-            break;
-        case 'double':
-            $larger = $object > 2147483647;
-            settype($object, 'string');
-            $kat .= strpos($object, '.') ? ($larger ? 'd' : 'f') : ($larger ? 'l' : 'i');
-            if ($name != NULL) {
-                $kat .= ":$name";
-            }
-            $kat .= '(' . $object . ')';
-            unset($larger);
-            break;
-        case 'object':
-            switch (get_class($object)) {
-                case 'Exception':
-                    $kat .= 'E';
-                    if ($name != NULL) {
-                        $kat .= ":$name";
-                    }
-                    $kat .= '{i:code(' . $object->getCode() . ')s:msg(' . $object->getMessage() . ')}';
-                    break;
-                case 'DateTime':
-                    $kat .= 'D';
-                    if ($name != NULL) {
-                        $kat .= ":$name";
-                    }
-                    $kat .= '(' . $object->format(DateTime::ISO8601) . ')';
-                    break;
-                default:
-                    if (is_callable($function_other)) {
-                        $kat .= call_user_func_array($function_other, [$object, $name, '', $function_other]);
-                    }
-            }
-            break;
-        case 'array':
-            $pos = 0;
-            $struct = false;
-            foreach ($object as $key => $value) {
-                if ($pos !== $key) {
-                    $struct = true;
-                    break;
-                }
-                $pos++;
-            }
+    // encode
+    $katy = new Katy();
+    $katy->encode(
+        $any, $name
+    );
 
-            if ($struct) {
-                $kat .= 'M';
-                if ($name != NULL) {
-                    $kat .= ":$name";
-                }
-                $kat .= '{';
-                foreach ($object as $name => $value) {
-                    $kat .= kat_encode($value, $name, '', $function_other);
-                }
-                $kat .= '}';
-            } else {
-                $kat .= 'A';
-                if ($name != NULL) {
-                    $kat .= ":$name";
-                }
-                $kat .= '{';
-                foreach ($object as $name => $value) {
-                    $kat .= kat_encode($value, NULL, '', $function_other);
-                }
-                $kat .= '}';
-            }
-            unset($pos, $struct);
-            break;
-        default:
-            $kat .= 'N';
-            if ($name != NULL) {
-                $kat .= ":$name";
-            }
-            $kat .= '[' . $object . ']';
-    }
+    // collect
+    $kat = $katy->toString();
+    unset($katy);
+
     return $kat;
 }
 
@@ -128,27 +34,224 @@ function kat_encode($object, $name = NULL, $kat = '', $function_other = NULL)
  */
 function kat_decode($kat)
 {
-    switch ($kat[0]) {
-        case '[':
-        case '{':
-            return json_decode($kat, true);
-    }
-    $parser = Kat_Parser::get();
-    $parser->read($kat);
+    // borrow
+    $parser = Kat_Parser::borrow();
 
-    return $parser->export();
+    // parser
+    $parser->read($kat);
+    $callback = $parser->export();
+
+    // retreat
+    Kat_Parser::retreat($parser);
+
+    return $callback;
 }
 
 /**
- * @param $data
- * @param null $name
+ * Katy
+ *
+ * @package Kat
  */
-function kat_response($data, $name = NULL)
+class Katy
 {
-    $kat = kat_encode($data, $name);
-    header('Content-Length: ' . strlen($kat));
-    header('Content-Type: text/kat');
-    exit($kat);
+    /**
+     * @var string
+     */
+    protected $kat = '';
+
+    /**
+     * @param $data
+     * @return $this
+     */
+    public function add($data)
+    {
+        $this->kat .= $data;
+        return $this;
+    }
+
+    /**
+     * @param $data
+     * @return $this
+     */
+    public function pack($data)
+    {
+        $this->kat .= '(';
+        $this->kat .= $data;
+        $this->kat .= ')';
+        return $this;
+    }
+
+    /**
+     * @param $name
+     * @return $this
+     */
+    public function alias($name)
+    {
+        if ($name !== null) {
+            $this->kat .= ':';
+            for ($i = 0, $l = strlen($name); $i < $l; $i++) {
+                switch ($name[$i]) {
+                    case '^':
+                    case ':':
+                    case '(':
+                    case ')':
+                    case '{':
+                    case '}':
+                    case '<':
+                    case '>':
+                        $this->kat .= '^';
+                }
+                $this->kat .= $name[$i];
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * @param $val
+     * @return $this
+     */
+    public function value($val)
+    {
+        $this->kat .= '(';
+        for ($i = 0, $l = strlen($val); $i < $l; $i++) {
+            switch ($val[$i]) {
+                case '^':
+                case '(':
+                case ')':
+                    $this->kat .= '^';
+            }
+            $this->kat .= $val[$i];
+        }
+        $this->kat .= ')';
+        return $this;
+    }
+
+    /**
+     * @param $any
+     * @param null $name
+     */
+    public function encode($any, $name = null)
+    {
+        switch (gettype($any)) {
+            case 'NULL':
+                $this->add('n')->alias($name)->add('()');
+                break;
+            case 'string':
+                $this->add('s')->alias($name)->value($any);
+                break;
+            case 'boolean':
+                $this->add('b')->alias($name)->pack(
+                    $any ? '1' : '0'
+                );
+                break;
+            case 'integer':
+                $this->add(
+                    $any > 2147483647 ? 'l' : 'i'
+                )->alias($name)->pack($any);
+                break;
+            case 'double':
+                $larger = $any > 2147483647;
+                settype($any, 'string');
+                $this->add(strpos($any, '.') ?
+                    ($larger ? 'd' : 'f') : ($larger ? 'l' : 'i')
+                )->alias($name)->pack($any);
+                unset($larger);
+                break;
+            case 'object':
+                $this->dispose($any, $name);
+                break;
+            case 'array':
+                $i = 0;
+                $mut = false;
+                foreach ($any as $key => $value) {
+                    if ($i !== $key) {
+                        $mut = true;
+                        break;
+                    }
+                    $i++;
+                }
+
+                if ($mut) {
+                    $this->add('M')->alias($name);
+                    $this->add('{');
+                    foreach ($any as $key => $value) {
+                        $this->encode(
+                            $value, $key
+                        );
+                    }
+                    $this->add('}');
+                } else {
+                    $this->add('A')->alias($name);
+                    $this->add('{');
+                    foreach ($any as $key => $value) {
+                        $this->encode(
+                            $value
+                        );
+                    }
+                    $this->add('}');
+                }
+                unset($i, $mut);
+        }
+    }
+
+    /**
+     * @param $any
+     * @param null $name
+     */
+    public function dispose($any, $name = null)
+    {
+        switch (get_class($any)) {
+            case 'KatAry':
+            {
+                $this->add(
+                    $any->class() ?: 'L'
+                )->alias($name);
+                $this->add('{');
+                foreach ($any->entry() as $key => $value) {
+                    $this->encode($value);
+                }
+                $this->add('}');
+                break;
+            }
+            case 'KatAny':
+            {
+                $this->add(
+                    $any->class() ?: 'M'
+                )->alias($name);
+                $this->add('{');
+                foreach ($any->entry() as $key => $value) {
+                    $this->encode(
+                        $value, $key
+                    );
+                }
+                $this->add('}');
+                break;
+            }
+            case 'Crash':
+            case 'Exception':
+                $this->add('E')->alias($name);
+                $this->add('{i:c(')->add(
+                    $any->getCode()
+                )->add(')s:m(')->add(
+                    $any->getMessage()
+                )->add(')}');
+                break;
+            case 'DateTime':
+                $this->add('D')->alias($name)->pack(
+                    $any->format(DateTime::ISO8601)
+                );
+                break;
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function toString()
+    {
+        return $this->kat;
+    }
 }
 
 /**
@@ -159,70 +262,70 @@ function kat_response($data, $name = NULL)
 class Kat_Parser
 {
     /**
-     * @var Kat_Parser
+     * @var array
      */
-    protected static $parser;
+    static $POOL = [];
 
     /**
      * @var int
      */
-    protected $status;
+    protected $event;
 
     /**
      * @var String
      */
-    protected $label;
+    protected $alia;
 
     /**
      * @var array
      */
-    protected $classes, $spaces, $aliases;
+    protected $clazzs, $spaces, $aliaes;
 
     /**
      * @var array
      */
-    protected $stack, $data;
+    protected $data, $relay;
 
     /**
      * @var array
      */
-    protected $space, $alias, $symbol;
+    protected $space, $alias, $value;
 
     /**
      * STATUS
      */
-    const SPACE = 0, ALIAS = 1, SYMBOL = 2;
+    const SPACE = 0, ALIAS = 1, VALUE = 2;
 
     /**
-     * Kat_Reader
-     *
+     * Kat_Parser
      */
     public function __construct()
     {
-        if (!function_exists('string_pop')) {
-            /**
-             * @param $s
-             * @return string
-             */
-            function string_pop(&$s)
-            {
-                $str = '';
-                foreach ($s as $ch) {
-                    $str .= chr($ch);
-                }
-                $s = [];
-                return $str;
-            }
-
-        }
+        $this->reuse();
     }
 
     /**
      * @return Kat_Parser
      */
-    public static function get()
+    public static function borrow()
     {
-        return Kat_Parser::$parser == NULL ? Kat_Parser::$parser = new Kat_Parser() : Kat_Parser::$parser;
+        if (empty($parser = array_pop(self::$POOL))) {
+            return new Kat_Parser();
+        }
+        return $parser;
+    }
+
+    /**
+     * @param Kat_Parser $parser
+     */
+    public static function retreat($parser): void
+    {
+        if (isset($parser) && count(self::$POOL) < 32) {
+            $parser->reuse();
+            self::$POOL[] = $parser;
+        } else {
+            unset($parser);
+        }
     }
 
     /**
@@ -230,7 +333,7 @@ class Kat_Parser
      */
     public function label()
     {
-        return $this->label;
+        return $this->alia;
     }
 
     /**
@@ -238,7 +341,31 @@ class Kat_Parser
      */
     public function export()
     {
-        return array_pop($this->data);
+        return array_pop(
+            $this->data
+        );
+    }
+
+    /**
+     * @target reuse
+     */
+    public function reuse()
+    {
+        // clear
+        $this->space = [];
+        $this->alias = [];
+        $this->value = [];
+
+        $this->data = [];
+        $this->relay = [];
+
+        $this->clazzs = [];
+        $this->spaces = [];
+        $this->aliaes = [];
+
+        // event
+        $this->alia = '';
+        $this->event = Kat_Parser::SPACE;
     }
 
     /**
@@ -246,190 +373,233 @@ class Kat_Parser
      */
     public function read($data)
     {
-        $this->startDoc();
-
         // trim
         $data = trim($data);
 
+        // count
+        $i = 0;
+        $k = strlen($data);
+
         // ergodic
-        for ($pos = 0, $length = strlen($data); $pos < $length; $pos++) {
-            $ch = ord($data[$pos]);
-            // status
-            switch ($this->status) {
-                case Kat_Parser::SYMBOL:
+        while ($i < $k) {
+            $b = $data[$i++];
+            // event
+            switch ($this->event) {
+                case Kat_Parser::VALUE:
                 {
-                    switch ($ch) {
-                        case 41:
+                    switch ($b) {
+                        case ')':
                         {
-                            $this->enterStack(array_pop($this->aliases), $this->parseSymbol(
-                                array_pop($this->spaces), string_pop($this->symbol)
-                            ));
-                            $this->status = Kat_Parser::SPACE;
+                            $this->dispose();
+                            $this->event = Kat_Parser::SPACE;
                             break;
                         }
-                        case 94:
+                        case '^':
                         {
-                            $c = ord($data[++$pos]);
+                            $c = $data[$i++];
                             switch ($c) {
-                                case 40:
-                                case 41:
-                                case 94:
+                                case '^':
+                                case '(':
+                                case ')':
                                 {
-                                    $this->symbol[] = $c;
+                                    $this->value[] = $c;
                                 }
                             }
                             break;
                         }
                         default:
                         {
-                            $this->symbol[] = $ch;
+                            $this->value[] = $b;
                         }
                     }
                     break;
                 }
                 case Kat_Parser::SPACE:
                 {
-                    switch ($ch) {
-                        case 123:
+                    switch ($b) {
+                        case '{':
                         {
-                            $this->status = Kat_Parser::SPACE;
-                            $this->startSpace(
-                                string_pop($this->space),
-                                string_pop($this->alias)
-                            );
+                            $this->event = Kat_Parser::SPACE;
+                            $this->creating();
                             break;
                         }
-                        case 40:
+                        case '(':
                         {
-                            $this->status = Kat_Parser::SYMBOL;
-                            $this->spaces[] = string_pop($this->space);
-                            $this->aliases[] = string_pop($this->alias);
+                            $this->event = Kat_Parser::VALUE;
+                            $this->analyze();
                             break;
                         }
-                        case 125:
+                        case '}':
                         {
-                            $this->endSpace(
-                                array_pop($this->spaces),
-                                array_pop($this->aliases)
-                            );
-                            $this->status = Kat_Parser::SPACE;
+                            $this->packing();
+                            $this->event = Kat_Parser::SPACE;
                             break;
                         }
-                        case 58:
+                        case ':':
                         {
-                            $this->status = Kat_Parser::ALIAS;
+                            $this->event = Kat_Parser::ALIAS;
                             break;
                         }
-                        case 32:
-                        case 9:
-                        case 10:
-                        case 13:
+                        case '':
+                        case "\r":
+                        case "\n":
+                        case "\t":
                         {
                             break;
                         }
                         default:
                         {
-                            $this->space[] = $ch;
+                            $this->space[] = $b;
                         }
                     }
                     break;
                 }
                 case Kat_Parser::ALIAS:
                 {
-                    switch ($ch) {
-                        case 123:
+                    switch ($b) {
+                        case '{':
                         {
-                            $this->status = Kat_Parser::SPACE;
-                            $this->startSpace(
-                                string_pop($this->space),
-                                string_pop($this->alias)
-                            );
+                            $this->event = Kat_Parser::SPACE;
+                            $this->creating();
                             break;
                         }
-                        case 40:
+                        case '(':
                         {
-                            $this->status = Kat_Parser::SYMBOL;
-                            $this->spaces[] = string_pop($this->space);
-                            $this->aliases[] = string_pop($this->alias);
+                            $this->event = Kat_Parser::VALUE;
+                            $this->analyze();
                             break;
                         }
-                        case 94:
+                        case '^':
                         {
-                            $pos++;
+                            $c = $data[$i++];
+                            switch ($c) {
+                                case '^':
+                                case ':':
+                                case '(':
+                                case ')':
+                                case '{':
+                                case '}':
+                                case '<':
+                                case '>':
+                                {
+                                    $this->value[] = $c;
+                                }
+                            }
                             break;
                         }
                         default:
                         {
-                            $this->alias[] = $ch;
+                            $this->alias[] = $b;
                         }
                     }
                 }
             }
         }
-
-        $this->endDoc();
     }
 
     /**
-     * start document
+     * @param $data
+     * @return string
      */
-    protected function startDoc()
+    protected function collect(&$data)
     {
-        $this->classes = [];
-        $this->stack = [];
-        $this->spaces = [];
-        $this->aliases = [];
-        $this->data = [];
-
-        $this->space = [];
-        $this->alias = [];
-        $this->symbol = [];
-
-        $this->status = Kat_Parser::SPACE;
+        $string = join(
+            '', $data
+        );
+        $data = [];
+        return $string;
     }
 
     /**
-     * end document
+     * @target creating
      */
-    protected function endDoc()
+    protected function creating()
     {
+        $clazz = $this->collect($this->space);
+        $alias = $this->collect($this->alias);
 
-    }
-
-    /**
-     * @param $clazz
-     * @param $alias
-     */
-    protected function startSpace($clazz, $alias)
-    {
         $this->spaces[] = $clazz;
-        $this->aliases[] = $alias;
-        $this->classes[] = $clazz;
+        $this->aliaes[] = $alias;
+        $this->clazzs[] = $clazz;
+
         switch ($clazz) {
             case 'L':
             case 'A':
             case 'M':
             {
-                $this->stack[] = [];
+                $this->relay[] = [];
                 break;
             }
         }
     }
 
     /**
-     * @param $clazz
-     * @param $alias
+     * @target packing
      */
-    protected function endSpace($clazz, $alias)
+    protected function packing()
     {
-        array_pop($this->classes);
+        $clazz = array_pop($this->spaces);
+        $alias = array_pop($this->aliaes);
+
+        array_pop($this->clazzs);
         switch ($clazz) {
             case 'M':
             case 'A':
             case 'L':
             {
-                $this->enterStack($alias, array_pop($this->stack));
+                $this->builder($alias,
+                    array_pop($this->relay)
+                );
             }
+        }
+    }
+
+    /**
+     * @target analyze
+     */
+    protected function analyze()
+    {
+        $this->spaces[] = $this->collect($this->space);
+        $this->aliaes[] = $this->collect($this->alias);
+    }
+
+    /**
+     * @target dispose
+     */
+    protected function dispose()
+    {
+        $this->builder(
+            array_pop($this->aliaes),
+            $this->casting(
+                array_pop($this->spaces),
+                $this->collect($this->value)
+            )
+        );
+    }
+
+    /**
+     * @param $alias
+     * @param $value
+     */
+    protected function builder($alias, $value)
+    {
+        if (empty($this->clazzs)) {
+            $this->alia = $alias;
+            $this->data[] = $value;
+        } else {
+            $index = count($this->relay) - 1;
+            switch (end($this->clazzs)) {
+                case 'M':
+                {
+                    $this->relay[$index][$alias] = $value;
+                    break;
+                }
+                case 'A':
+                {
+                    $this->relay[$index][] = $value;
+                }
+            }
+            unset($index);
         }
     }
 
@@ -438,10 +608,9 @@ class Kat_Parser
      * @param $val
      * @return mixed
      */
-    protected function parseSymbol($clazz, $val)
+    protected function casting($clazz, $val)
     {
         switch ($clazz) {
-            case 'N':
             case 's':
                 return $val;
             case 'b':
@@ -465,31 +634,5 @@ class Kat_Parser
                 return base64_decode($val);
         }
         return $val;
-    }
-
-    /**
-     * @param $alias
-     * @param $value
-     */
-    protected function enterStack($alias, $value)
-    {
-        if (count($this->classes)) {
-            $index = count($this->stack) - 1;
-            switch (end($this->classes)) {
-                case 'M':
-                {
-                    $this->stack[$index][$alias] = $value;
-                    break;
-                }
-                case 'A':
-                {
-                    $this->stack[$index][] = $value;
-                }
-            }
-            unset($index);
-        } else {
-            $this->label = $alias;
-            $this->data[] = $value;
-        }
     }
 }

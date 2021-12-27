@@ -3,10 +3,116 @@
 class Nabo_Format
 {
     /**
+     * @param $status
+     * @return string
+     */
+    public static function note_status($status)
+    {
+        switch ($status) {
+            case 'open':
+                return 'publish';
+            case 'self':
+                return 'private';
+            case 'hide':
+                return 'hidden';
+            case 'close':
+                return 'waiting';
+        }
+        return 'publish';
+    }
+
+    /**
+     * @param $status
+     * @return string
+     */
+    public static function note_status_by($status)
+    {
+        switch ($status) {
+            case 'publish':
+                return 'open';
+            case 'private':
+                return 'self';
+            case 'hidden':
+                return 'hide';
+            case 'waiting':
+                return 'close';
+        }
+        return 'open';
+    }
+
+    /**
+     * @param $status
+     * @return string
+     */
+    public static function dynamic_status($status)
+    {
+        switch ($status) {
+            case 'open':
+                return 'publish';
+            case 'self':
+                return 'private';
+            case 'hide':
+                return 'hidden';
+        }
+        return 'publish';
+    }
+
+    /**
+     * @param $status
+     * @return string
+     */
+    public static function dynamic_status_by($status)
+    {
+        switch ($status) {
+            case 'publish':
+                return 'open';
+            case 'private':
+                return 'self';
+            case 'hidden':
+                return 'hide';
+        }
+        return 'open';
+    }
+
+    /**
+     * @param $status
+     * @return string
+     */
+    public static function discuss_status($status)
+    {
+        switch ($status) {
+            case 'open':
+                return 'approved';
+            case 'spam':
+                return 'spam';
+            case 'close':
+                return 'waiting';
+        }
+        return 'approved';
+    }
+
+    /**
+     * @param $status
+     * @return string
+     */
+    public static function discuss_status_by($status)
+    {
+        switch ($status) {
+            case 'approved':
+                return 'open';
+            case 'spam':
+                return 'spam';
+            case 'waiting':
+                return 'close';
+        }
+        return 'open';
+    }
+
+    /**
      * @param $keywords
      * @return string
      */
-    public static function searchOf($keywords)
+    public static function search($keywords)
     {
         return '%' . str_replace(' ', '%', $keywords) . '%';
     }
@@ -15,7 +121,7 @@ class Nabo_Format
      * @param string $def
      * @return bool
      */
-    public static function successOf($def = 'notice')
+    public static function success($def = 'notice')
     {
         return Typecho_Cookie::get('__typecho_notice_type', $def) == 'success';
     }
@@ -25,12 +131,26 @@ class Nabo_Format
      * @param $page
      * @param $size
      */
-    public static function pagingOf($data, &$page, &$size)
+    public static function paging($data, &$page, &$size)
     {
-        $size = intval($data['number']);
+        $size = intval($data['length']);
         $size = $size > 0 ? $size : 10;
+
         $offset = intval($data['offset']);
         $page = $offset > 0 ? ceil($offset / $size) : 1;
+    }
+
+    /**
+     * @param $widget
+     * @param null $last
+     * @return mixed
+     */
+    public static function lastOf($widget, $last = NULL)
+    {
+        while (($row = $widget->next()) !== false) {
+            $last = &$row;
+        }
+        return $last;
     }
 
     /**
@@ -38,44 +158,50 @@ class Nabo_Format
      * @param false $token
      * @return array
      */
-    public static function userOf($user, $token = false)
+    public static function user($user, $token = false)
     {
-        $_user = array(
-            'site' => (string)$user['url'],
+        $target = array(
             'uid' => (int)$user['uid'],
             'name' => (string)$user['name'],
             'mail' => (string)$user['mail'],
             'nickname' => (string)$user['screenName'],
-            'group' => (string)$user['group'],
+            'site' => (string)$user['url'],
+            'role' => (string)$user['group'],
             'access' => (string)$user['authCode'],
-            'logged' => (int)$user['logged'],
+            'touched' => (int)$user['activated'],
             'created' => (int)$user['created'],
-            'touched' => (int)$user['activated']
+            'modified' => (int)$user['logged'],
         );
         if ($token) {
-            $_user['token'] = $token;
+            $target['token'] = $token;
         }
-        return $_user;
+        return $target;
     }
 
     /**
      * @param $notes
-     * @return array
+     * @param bool $more
+     * @return KatAry
      */
-    public static function notesOf($notes)
+    public static function notes($notes, $more = false)
     {
-        $list = [];
+        $arg = new KatAry();
         foreach ($notes as $note) {
-            $list[] = self::noteOf($note);
+            $arg->add(
+                self::note(
+                    $note, $more
+                )
+            );
         }
-        return $list;
+        return $arg;
     }
 
     /**
      * @param $note
-     * @return array
+     * @param bool $more
+     * @return KatAny
      */
-    public static function noteOf($note)
+    public static function note($note, $more = true)
     {
         $db = Typecho_Db::get();
         $nid = intval($note['cid']);
@@ -89,37 +215,45 @@ class Nabo_Format
         foreach ($db->fetchAll($db->select()
             ->from('table.fields')->where('cid = ?', $nid)) as $row) {
             $fields[] = [
-                'type' => $row['type'],
-                'key' => $row['name'],
-                'val' => $row[$row['type'] . '_value']
+                't' => $row['type'],
+                'k' => $row['name'],
+                'v' => $row[$row['type'] . '_value']
             ];
         }
         unset($row);
 
-        // categories
-        $categories = [];
-        $note['categories'] = $db->fetchAll($db->select()->from('table.metas')
+        // metas
+        $metas = $db->fetchAll($db->select()->from('table.metas')
             ->join('table.relationships', 'table.relationships.mid = table.metas.mid')
             ->where('table.relationships.cid = ?', $note['cid'])
-            ->where('table.metas.type = ?', 'category')
             ->order('table.metas.order')
         );
-        $note['category'] = empty($note['categories']) ?
-            NULL : urlencode($note['categories'][0]['slug']);
-        foreach ($note['categories'] as $row) {
-            $categories[] = $row['name'];
+
+        $tags = [];
+        $note['categories'] = [];
+        foreach ($metas as $row) {
+            if ($row['type'] == 'category') {
+                $note['categories'][] = $row;
+            } else {
+                $tags[] = $row['name'];
+            }
         }
+        $tags = implode(',', $tags);
         unset($row);
 
-        // tags
-        $tags = [];
-        foreach ($db->fetchAll($db->select()->from('table.metas')
-            ->join('table.relationships', 'table.relationships.mid = table.metas.mid')
-            ->where('table.relationships.cid = ?', $nid)->where('table.metas.type = ?', 'tag')
-            ->order('table.metas.order')) as $row) {
-            $tags[] = $row['name'];
+        $meta = 0;
+        $category = '';
+        if (empty($note['categories'])) {
+            $note['category'] = NULL;
+        } else {
+            list($cate) = $note['categories'];
+            $meta = $cate['mid'];
+            $category = (string)$cate['name'];
+            $note['category'] = urlencode(
+                $cate['slug']
+            );
+            unset($cate);
         }
-        unset($row);
 
         // date
         $timestamp = $note['created'] + Typecho_Date::$timezoneOffset
@@ -134,217 +268,253 @@ class Nabo_Format
         $permalink = Typecho_Common::url($pathinfo, Helper::options()->index);
 
         // content
-        if (isset($note['text'])) {
+        if ($more && isset($note['text'])) {
             if (strpos($note['text'], '<!--markdown-->') === 0) {
                 $note['text'] = substr($note['text'], 15);
             }
+        } else {
+            unset($note['text']);
         }
 
-        return array(
+        $type = (string)$note['type'];
+        $code = (string)$note['password'];
+        $status = (string)$note['status'];
+        switch ($type) {
+            case 'post_draft':
+            {
+                $type = 'post';
+                $status = 'draft';
+                break;
+            }
+            case 'page_draft':
+            {
+                $type = 'page';
+                $status = 'draft';
+                break;
+            }
+            default:
+            {
+                if (empty($code)) {
+                    $status = self::note_status_by($status);
+                } else {
+                    $status = 'code';
+                }
+            }
+        }
+
+        return new KatAny([
             'nid' => $nid,
             'uid' => (int)$note['authorId'],
-            'oid' => (int)$note['parent'],
             'title' => (string)$note['title'],
             'content' => (string)$note['text'],
-
-            'type' => (string)$note['type'],
+            'type' => $type,
             'slug' => (string)$slug,
-            'order' => (int)$note['order'],
-            'status' => (string)$note['status'],
-
-            'password' => (string)$note['password'],
-            'template' => (string)$note['template'],
-            'permalink' => (string)$permalink,
-
-            'fields' => $fields,
+            'code' => $code,
+            'rely' => (int)$note['parent'],
+            'meta' => $meta,
             'tags' => $tags,
-            'categories' => $categories,
+            'order' => (int)$note['order'],
+            'envoy' => (string)$note['template'],
+            'status' => $status,
+            'extras' => $fields,
+            'category' => $category,
+            'permalink' => (string)$permalink,
+            'created' => (int)$note['created'],
+            'modified' => (int)$note['modified'],
 
             'allowPing' => (int)$note['allowPing'],
             'allowFeed' => (int)$note['allowFeed'],
-            'allowComment' => (int)$note['allowComment'],
-
-            'created' => (int)$note['created'],
-            'modified' => (int)$note['modified'],
-        );
+            'allowDisc' => (int)$note['allowComment']
+        ], 'Note');
     }
 
     /**
-     * @param $discusses
-     * @return array
+     * @param $discuses
+     * @return KatAry
      */
-    public static function discussesOf($discusses)
+    public static function discuses($discuses)
     {
-        $list = [];
-        foreach ($discusses as $discuss) {
-            $list[] = self::discussOf($discuss);
+        $ary = new KatAry();
+        foreach ($discuses as $discuss) {
+            $ary->add(
+                self::discuss($discuss)
+            );
         }
-        return $list;
+        return $ary;
     }
 
     /**
      * @param $discuss
-     * @return array
+     * @return KatAny
      */
-    public static function discussOf($discuss)
+    public static function discuss($discuss)
     {
-        return array(
+        return new KatAny([
             'did' => (int)$discuss['coid'],
             'nid' => (int)$discuss['cid'],
             'uid' => (int)$discuss['authorId'],
-
-            'nickname' => (string)$discuss['author'],
             'mail' => (string)$discuss['mail'],
             'site' => (string)$discuss['url'],
+            'author' => (string)$discuss['author'],
             'message' => (string)$discuss['text'],
-
-            'status' => (string)$discuss['status'],
+            'status' => self::discuss_status_by($discuss['status']),
             'agent' => (string)$discuss['agent'],
             'address' => (string)$discuss['ip'],
-
-            '_nid' => (int)$discuss['parent'],
-            '_title' => (string)$discuss['title'],
-
+            'rely' => (int)$discuss['parent'],
+            'title' => (string)$discuss['title'],
             'created' => (int)$discuss['created'],
-        );
+            'modified' => (int)$discuss['modified']
+        ], 'Discuss');
     }
 
     /**
      * @param $metas
-     * @return array
+     * @return KatAry
      */
-    public static function metasOf($metas)
+    public static function metas($metas)
     {
-        $list = [];
+        $ary = new KatAry();
         foreach ($metas as $meta) {
-            $list[] = self::metaOf($meta);
+            $ary->add(
+                self::meta($meta)
+            );
         }
-        return $list;
+        return $ary;
     }
 
     /**
      * @param $meta
-     * @return array
+     * @return KatAny
      */
-    public static function metaOf($meta)
+    public static function meta($meta)
     {
-        return array(
+        return new KatAny([
             'mid' => (int)$meta['mid'],
-            'oid' => (int)$meta['parent'],
-            'type' => (string)$meta['type'],
             'name' => (string)$meta['name'],
             'slug' => (string)$meta['slug'],
-            'desc' => (string)$meta['description'],
-            'order' => (int)$meta['order'],
-            'count' => (int)$meta['count'],
-        );
+            'rely' => (int)$meta['parent'],
+            'order' => (int)$meta['order']
+        ], 'Meta');
     }
 
     /**
      * @param $medias
-     * @return array
+     * @return KatAry
      */
-    public static function mediasOf($medias)
+    public static function medias($medias)
     {
-        $list = [];
+        $ary = new KatAry();
         foreach ($medias as $media) {
-            $list[] = self::mediaOf($media);
+            $ary->add(
+                self::media($media)
+            );
         }
-        return $list;
+        return $ary;
     }
 
     /**
      * @param $media
-     * @return array
+     * @return KatAny
      */
-    public static function mediaOf($media)
+    public static function media($media)
     {
-        $media['attachment'] = new Typecho_Config(@unserialize($media['text']));
-        return array(
+        $media['attachment'] = new Typecho_Config(
+            @unserialize($media['text'])
+        );
+        return new KatAny([
             'mid' => (int)$media['cid'],
-            'oid' => (int)$media['parent'],
-            'title' => (string)$media['title'],
-            'message' => (string)$media['attachment']->description,
-            'slug' => (string)$media['slug'],
-            'size' => (int)$media['attachment']->size,
+            'name' => (string)$media['title'],
             'link' => (string)Widget_Upload::attachmentHandle($media),
             'path' => (string)$media['attachment']->path,
             'mime' => (string)$media['attachment']->mime,
+            'length' => (int)$media['attachment']->size,
             'created' => (int)$media['created'],
             'modified' => (int)$media['modified']
-        );
+        ], 'Media');
     }
 
     /**
      * @param $dynamics
-     * @return array
+     * @return KatAry
      */
-    public static function dynamicsOf($dynamics)
+    public static function dynamics($dynamics)
     {
-        $list = [];
+        $ary = new KatAry();
         foreach ($dynamics as $dynamic) {
-            $list[] = self::dynamicOf($dynamic);
+            $ary->add(
+                self::dynamic($dynamic)
+            );
         }
-        return $list;
+        return $ary;
     }
 
     /**
      * @param $dynamic
-     * @return array
+     * @return KatAny
      */
-    public static function dynamicOf($dynamic)
+    public static function dynamic($dynamic)
     {
-        return array(
+        return new KatAny([
             'did' => (int)$dynamic['did'],
-            'authorId' => (int)$dynamic['authorId'],
+            'uid' => (int)$dynamic['authorId'],
             'title' => (string)$dynamic['title'],
-            'text' => (string)$dynamic['text'],
-            'status' => (string)$dynamic['status'],
-            'agent' => (string)$dynamic['agent'],
+            'content' => (string)$dynamic['text'],
+            'status' => Nabo_Format::dynamic_status_by(
+                (string)$dynamic['status']
+            ),
             'created' => (int)$dynamic['created'],
             'modified' => (int)$dynamic['modified'],
             'permalink' => (string)$dynamic['permalink'],
-        );
+        ], 'Dynamic');
     }
 
     /**
-     * @param $cid
-     * @return false|string
+     * @param $friends
+     * @return KatAry
      */
-    public static function fieldsOf($cid)
+    public static function friends($friends)
     {
-        $fields = [];
-        $db = Typecho_Db::get();
-        $rows = $db->fetchAll($db->select()
-            ->from('table.fields')
-            ->where('cid = ?', $cid));
-        foreach ($rows as $row) {
-            $fields[] = array(
-                "name" => $row['name'],
-                "type" => $row['type'],
-                "value" => $row[$row['type'] . '_value']
+        $ary = new KatAry();
+        foreach ($friends as $friend) {
+            $ary->add(
+                self::friend($friend)
             );
         }
-        return json_encode($fields, JSON_UNESCAPED_UNICODE);
+        return $ary;
+    }
+
+    /**
+     * @param $friend
+     * @return KatAny
+     */
+    public static function friend($friend)
+    {
+        return new KatAny([
+            'fid' => (int)$friend['lid'],
+            'name' => (string)$friend['name'],
+            'link' => (string)$friend['url'],
+            'image' => (string)$friend['image'],
+            'intro' => (string)$friend['description'],
+            'team' => (string)$friend['sort'],
+            'order' => (int)$friend['order'],
+            'extra' => (string)$friend['user'],
+        ], 'Friend');
     }
 
     /**
      * @param $uid
-     * @param $from
-     * @param $type
      * @return int
      */
-    public static function wordsSizeOf($uid, $from, $type)
+    public static function create_words_size($uid)
     {
         $chars = 0;
-        $owner = "table.comments" == $from ? "ownerId" : "authorId";
         $db = Typecho_Db::get();
         $select = $db->select('text')
-            ->from($from)
-            ->where($owner . ' = ?', $uid)
-            ->where('type = ?', $type);
+            ->from('table.contents')
+            ->where('authorId = ?', $uid);
         $rows = $db->fetchAll($select);
         foreach ($rows as $row) {
+            $chars += mb_strlen($row['title'], 'UTF-8');
             $chars += mb_strlen($row['text'], 'UTF-8');
         }
         return $chars;

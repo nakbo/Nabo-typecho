@@ -25,14 +25,6 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
     protected $liteuser;
 
     /**
-     * 已经使用过的组件列表
-     *
-     * @access private
-     * @var array
-     */
-    protected $_usedWidgetNameList = [];
-
-    /**
      * @param false $run
      */
     public function execute($run = false)
@@ -53,6 +45,16 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
      */
     public function action()
     {
+        // data
+        $request = file_get_contents(
+            'php://input'
+        );
+
+        // check data
+        if (empty($request)) {
+            die('Kat server accepts POST requests only');
+        }
+
         // report
         error_reporting(E_ERROR);
 
@@ -68,6 +70,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         Typecho_Widget::widget('Nabo_User')->to($this->liteuser);
 
         include_once 'Kat/Kat.php';
+        include_once 'Kat/Plus.php';
         include_once 'Kat/Server.php';
 
         // server
@@ -77,7 +80,9 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->server->register($this);
 
         // launch
-        $this->server->launch();
+        $this->server->receive(
+            $this, $request
+        );
     }
 
     /**
@@ -85,13 +90,13 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
      * @param null $params
      * @param null $request
      * @param false $enableResponse
-     * @return Typecho_Widget
-     * @throws Typecho_Exception
+     * @return mixed
      */
     private function singletonWidget($alias, $params = NULL, $request = NULL, $enableResponse = false)
     {
-        $this->_usedWidgetNameList[] = $alias;
-        $widget = Typecho_Widget::widget($alias, $params, $request, $enableResponse);
+        $widget = Typecho_Widget::widget(
+            $alias, $params, $request, $enableResponse
+        );
         if ($enableResponse) {
             $widget->response = new Nabo_Helper();
         }
@@ -99,61 +104,78 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
     }
 
     /**
-     * 回收变量
-     *
-     * @access public
-     * @param $method
-     * @param $kat
      * @return void
      */
-    public function hooker_after($method, &$kat)
+    public function hooker_start()
     {
-        foreach ($this->_usedWidgetNameList as $key => $widgetName) {
-            $this->destory($widgetName);
-            unset($this->_usedWidgetNameList[$key]);
-        }
+        // stream
     }
 
     /**
-     * @param $method
-     * @param $auth
-     * @throws Exception
+     * @param $kat
+     * @param $header
      */
-    public function cipher_access($method, $auth)
+    public function hooker_end($kat, $header)
     {
+        // kat
+        foreach ($header as $key => $val) {
+            header("$key: $val");
+        }
+        header('Date: ' . date('r'));
+        header('Connection: close');
+        header('Content-Length: ' . strlen($kat));
+        exit($kat);
+    }
+
+    /**
+     * @param $kat
+     * @throws Crash
+     * @throws ReflectionException
+     */
+    public function hooker_accept(&$kat)
+    {
+        // cert
+        $cert = $kat['cert'];
+
+        // digest
+        $digest = md5(
+            $kat['request']
+        );
+
+        // check
+        if ($cert['digest'] != $digest) {
+            throw new Crash(
+                '非法请求', 102
+            );
+        }
+
+        // cert
+        $auth = $kat['auth'];
+
         // identity
         $this->liteuser->identity($auth);
 
         // check
-        if (in_array($method, ['kat_user_login', 'kat_user__login'])) {
-            return;
-        }
+        switch ($kat['method']) {
+            case 'kat_user_login':
+            case 'kat_user_challenge':
+                break;
+            default:
+            {
+                // challenge
+                $this->liteuser->register();
 
-        // challenge
-        $this->liteuser->challenge();
-
-        // modify
-        $this->user->execute();
-    }
-
-    /**
-     * @param $cert
-     * @param $request
-     * @throws Exception
-     */
-    public function cipher_accept($cert, $request)
-    {
-        // check
-        if ($cert['digest'] != md5($request)) {
-            throw new Exception('非法请求', 102);
+                // modify
+                $this->user->execute();
+            }
         }
     }
 
     /**
-     * @param $method
+     * @param $kat
      * @param $callback
      */
-    public function cipher_challenge($method, &$callback)
+    public function hooker_challenge($kat, &$callback)
     {
         $callback['cert'] = [
             'digest' => md5($callback['response'])
@@ -164,12 +186,12 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
      * 验证权限
      *
      * @param string $level
-     * @throws Exception
+     * @throws Crash
      */
-    public function checkAccess($level = 'contributor')
+    public function check_access($level = 'contributor')
     {
         if (!$this->user->pass($level, true)) {
-            throw new Exception('权限不足', 101);
+            throw new Crash('权限不足', 101);
         }
     }
 
@@ -185,41 +207,31 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
     }
 
     /**
-     * 登录
-     *
-     * @access public
+     * @param $data
+     * @return array|Crash
+     */
+    public function metcip_kat_user_login($data)
+    {
+        return $this->liteuser->login($data);
+    }
+
+    /**
      * @param $credential
-     * @return array|Exception
+     * @return array|Crash
      */
-    public function metcip_kat_user_login($credential)
+    public function metcip_kat_user_challenge($credential)
     {
-        return $this->liteuser->login($credential);
+        return $this->liteuser->challenge($credential);
     }
 
     /**
-     * 登录
-     *
-     * @access public
      * @param $data
-     * @return array|Exception
-     * @throws Exception
+     * @return array|string[]
+     * @throws Crash
      */
-    public function metcip_kat_user__login($data)
+    public function metcip_kat_user_pull($data)
     {
-        return $this->liteuser->_login($data);
-    }
-
-    /**
-     * 用户
-     *
-     * @access public
-     * @param $data
-     * @return array|Exception
-     * @throws Exception
-     */
-    public function metcip_kat_user_sync($data)
-    {
-        $this->checkAccess();
+        $this->check_access();
 
         // touch
         $touch = (int)$data['touch'];
@@ -230,7 +242,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         );
 
         // user
-        $user = $this->liteuser->user();
+        $user = $this->liteuser->user;
 
         // push key
         if ($this->option->allowPush) {
@@ -244,124 +256,49 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             }
         }
 
+        // merge
         if ($touch) {
-            $callback['user'] = $this->liteuser->respond($user);
+            $callback = array_merge(
+                $callback, $this->liteuser->response($user)
+            );
         }
 
         return $callback;
     }
 
     /**
-     * 统计
-     *
      * @param $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
+     * @return array
+     * @throws Crash
      */
-    public function metcip_kat_stat_sync($data)
+    public function metcip_kat_stat_pull($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
-        $post = $this->db->fetchRow($this->db->select([
-            "COUNT(cid)" => 'all',
-            "SUM(IF(status = 'publish' AND type = 'post', 1, 0))" => 'publish',
-            "SUM(IF(status = 'private' AND type = 'post', 1, 0))" => 'private',
-            "SUM(IF(status = 'waiting', 1, 0))" => 'waiting',
-            "SUM(IF(status = 'hidden' AND type = 'post', 1, 0))" => 'hidden',
-            "SUM(IF(type = 'post_draft', 1, 0))" => 'draft'
-        ])->from('table.contents')->where('type LIKE ?', 'post%')
-            ->where('authorId = ?', $this->liteuser->uid()));
-        $post['all'] -= $post['draft'];
-        $post['textSize'] = Nabo_Format::wordsSizeOf(
-            $this->liteuser->uid(), 'table.contents', 'post'
-        );
-        $post = array_map(function ($size) {
-            return (int)$size;
-        }, $post);
-
-        $page = $this->db->fetchRow($this->db->select([
-            "COUNT(cid)" => 'all',
-            "SUM(IF(status = 'publish' AND type = 'page', 1, 0))" => 'publish',
-            "SUM(IF(status = 'hidden' AND type = 'page', 1, 0))" => 'hidden',
-            "SUM(IF(type = 'page_draft', 1, 0))" => 'draft'
-        ])->from('table.contents')->where('type LIKE ?', 'page%')
-            ->where('authorId = ?', $this->liteuser->uid()));
-        $page['all'] -= $page['draft'];
-        $page['textSize'] = Nabo_Format::wordsSizeOf(
-            $this->liteuser->uid(), 'table.contents', 'page'
-        );
-        $page = array_map(function ($size) {
-            return (int)$size;
-        }, $page);
-
-        $comment = $this->db->fetchRow($this->db->select([
-            "COUNT(coid)" => 'all',
-            "SUM(IF(authorId = '{$this->liteuser->uid()}', 1,0))" => 'me',
-            "SUM(IF(status = 'approved', 1, 0))" => 'publish',
-            "SUM(IF(status = 'waiting', 1, 0))" => 'waiting',
-            "SUM(IF(status = 'spam', 1, 0))" => 'spam'
-        ])->from('table.comments')
-            ->where('ownerId = ?', $this->liteuser->uid()));
-        $comment['textSize'] = Nabo_Format::wordsSizeOf(
-            $this->liteuser->uid(), 'table.comments', 'comment'
-        );
-        $comment = array_map(function ($size) {
-            return (int)$size;
-        }, $comment);
-
-        $meta = $this->db->fetchRow($this->db->select([
-            "SUM(IF(type = 'category', 1,0))" => 'category_all',
-            "SUM(IF(type = 'category' AND count > 0, 1,0))" => 'category_archive',
-            "SUM(IF(type = 'tag', 1, 0))" => 'tag_all',
-            "SUM(IF(type = 'tag' AND count > 0, 1,0))" => 'tag_archive'
-        ])->from('table.metas'));
-        $meta = array_map(function ($size) {
-            return (int)$size;
-        }, $meta);
-
-        $category = [
-            'all' => $meta['category_all'],
-            'archive' => $meta['category_archive']
+        return [
+            'creative' => Nabo_Format::create_words_size(
+                $this->liteuser->uid
+            )
         ];
-
-        $tag = [
-            'all' => $meta['tag_all'],
-            'archive' => $meta['tag_archive']
-        ];
-
-        $media = $this->db->fetchRow($this->db->select([
-            "COUNT(cid)" => 'all',
-            "SUM(IF(parent > 0, 1,0))" => 'archive'
-        ])->from('table.contents')->where('type = ?', 'attachment'));
-        $media = array_map(function ($size) {
-            return (int)$size;
-        }, $media);
-
-        return compact('post', 'page', 'comment',
-            'category', 'tag', 'media'
-        );
     }
 
     /**
-     * 笔记
-     *
-     * @param array $data
-     * @param string $type
-     * @return array|Exception
-     * @throws Typecho_Widget_Exception
-     * @throws Exception
-     * @access public
+     * @param $data
+     * @return KatAry|Crash
+     * @throws Crash
      */
-    public function metcip_kat_note_list($data, $type = 'post')
+    public function metcip_kat_note_drag($data)
     {
-        // check
-        if ($type == 'post') {
-            $this->checkAccess();
-        } else if ($type == 'page') {
-            $this->checkAccess('editor');
-        } else {
-            return new Exception('异常请求');
+        // check type
+        switch ($type = $data['type']) {
+            case 'post':
+                $this->check_access();
+                break;
+            case 'page':
+                $this->check_access('editor');
+                break;
+            default:
+                return new Crash('异常请求');
         }
 
         // select
@@ -375,12 +312,12 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         // total
         if ($data['total'] != 'on' || !$this->user->pass('editor', true)) {
-            $select->where('table.contents.authorId = ?', $this->liteuser->uid());
+            $select->where('table.contents.authorId = ?', $this->liteuser->uid);
         }
 
         // status
-        switch ($status = $data['status'] ?: 'total') {
-            case 'total':
+        switch ($status = $data['status'] ?: 'allow') {
+            case 'allow':
                 $select->where('table.contents.type = ?', $type);
                 break;
             case 'draft':
@@ -388,12 +325,12 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 break;
             default:
                 $select->where('table.contents.type = ?', $type);
-                $select->where('table.contents.status = ?', $status);
+                $select->where('table.contents.status = ?', Nabo_Format::note_status($status));
         }
 
         // search
-        if (isset($data['keywords'])) {
-            $searchQuery = Nabo_Format::searchOf($data['keywords']);
+        if (isset($data['search'])) {
+            $searchQuery = Nabo_Format::search($data['search']);
             $select->where('table.contents.title LIKE ? OR table.contents.text LIKE ?', $searchQuery, $searchQuery);
         }
 
@@ -405,64 +342,71 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         }
 
         // paging
-        Nabo_Format::pagingOf($data, $page, $size);
-        $select->page($page, $size);
+        Nabo_Format::paging(
+            $data, $page, $size
+        );
 
-        return Nabo_Format::notesOf(
+        // page
+        $select->page(
+            $page, $size
+        );
+
+        return Nabo_Format::notes(
             $this->db->fetchAll($select)
         );
     }
 
     /**
-     * 同步笔记
-     *
-     * @param $nid
-     * @param string $type
-     * @return array|Exception
-     * @throws Exception
-     * @access public
+     * @param $data
+     * @return KatAny|Crash
+     * @throws Crash
      */
-    public function metcip_kat_note_sync($nid, $type = 'post')
+    public function metcip_kat_note_pull($data)
     {
-        // check
-        if ($type == 'post') {
-            $this->checkAccess();
-        } else if ($type == 'page') {
-            $this->checkAccess('editor');
-        } else {
-            return new Exception('异常请求');
+        // check type
+        switch ($type = $data['type']) {
+            case 'post':
+                $this->check_access();
+                break;
+            case 'page':
+                $this->check_access('editor');
+                break;
+            default:
+                return new Crash('异常请求');
         }
 
-        if (count($row = $this->db->fetchRow($this->db->select()
+        $note = $this->db->fetchRow($this->db->select()
             ->from('table.contents')
-            ->where('authorId = ?', $this->liteuser->uid())
-            ->where('cid = ?', $nid)))) {
-            return Nabo_Format::noteOf($row);
+            ->where('cid = ?', intval($data['nid']))
+            ->where('authorId = ?', $this->liteuser->uid));
+
+        if (empty($note)) {
+            return new Crash(
+                '笔记不存在', 403
+            );
         }
-        return new Exception('不存在此文章', 403);
+
+        return Nabo_Format::note($note);
     }
 
     /**
-     * 创建笔记
-     *
-     * @param array $data
-     * @param string $type
-     * @return array|Exception
+     * @param $data
+     * @return array|Crash
+     * @throws Crash
      * @throws ReflectionException
-     * @throws Typecho_Exception
-     * @throws Typecho_Widget_Exception
-     * @throws Exception
-     * @access public
      */
-    public function metcip_kat_note_create($data, $type = 'post')
+    public function metcip_kat_note_push($data)
     {
-        // check
-        if ($type == 'post') {
-            $this->checkAccess();
-        } else if ($type == 'page') {
-            $this->checkAccess('editor');
-        } else {
-            return new Exception('异常请求');
+        // check type
+        switch ($type = $data['type']) {
+            case 'post':
+                $this->check_access();
+                break;
+            case 'page':
+                $this->check_access('editor');
+                break;
+            default:
+                return new Crash('异常请求');
         }
 
         // do
@@ -475,16 +419,16 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         if (!empty($data['nid'])) {
             if ($temporary = $this->db->fetchRow($editor->select()
                 ->where('cid = ? and type LIKE ?', $data['nid'], $type . '%'))) {
-                if ($temporary['authorId'] != $this->liteuser->uid() ||
+                if ($temporary['authorId'] != $this->liteuser->uid ||
                     !$this->user->pass('editor', true)) {
-                    return new Exception('没有编辑权限');
+                    return new Crash('没有编辑权限');
                 }
                 if ($temporary['parent']) {
                     $temporary['draft']['cid'] = $temporary[$draft ? 'cid' : 'parent'];
                 }
                 $editor->push($temporary);
             } else {
-                return new Exception('文章不存在, 无法编辑');
+                return new Crash('笔记不存在, 无法编辑');
             }
         }
 
@@ -500,7 +444,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             'text' => $data['content'],
 
             // status
-            'visibility' => $data['status']
+            'visibility' => Nabo_Format::note_status($data['status'])
         );
 
         // markdown
@@ -513,9 +457,24 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             $note['slug'] = $data['slug'];
         }
 
+        // code
+        if (!empty($data['code'])) {
+            $note['password'] = $data['code'];
+            $note['visibility'] = 'password';
+        }
+
+        // envoy
+        if (!empty($data['envoy'])) {
+            $note['template'] = $data['envoy'];
+        }
+
+        // envoy
+        if (isset($data['allowDisc'])) {
+            $note['allowComment'] = $data['allowDisc'];
+        }
+
         // filed
-        foreach (['title', 'template', 'order', 'password',
-                     'allowPing', 'allowFeed', 'allowComment'] as $filed) {
+        foreach (['title', 'order', 'allowPing', 'allowFeed'] as $filed) {
             if (isset($data[$filed])) {
                 $note[$filed] = $data[$filed];
             }
@@ -523,30 +482,27 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         unset($filed);
 
         // fields
-        if (is_array($data['fields'])) {
-            foreach ($data['fields'] as $field) {
-                $note['fields'][$field['key']] = [
-                    $field['type'], $field['val']
+        if (is_array($data['extras'])) {
+            foreach ($data['extras'] as $field) {
+                $note['fields'][$field['k']] = [
+                    $field['t'], $field['v']
                 ];
             }
         }
 
-        // categories
-        if (is_array($data['categories'])) {
-            foreach ($data['categories'] as $category) {
-                if (empty($_category = $this->db->fetchRow($this->db->select('mid')
-                    ->from('table.metas')->where('type = ? AND name = ?', 'category', $category)))) {
-                    $_category = $this->metcip_kat_category_create(['name' => $category]);
-                }
-                $note['category'][] = $_category['mid'];
+        // meta
+        $note['category'] = [];
+        if (!empty($data['meta'])) {
+            if (is_numeric($data['meta'])) {
+                $note['category'] [] = $data['meta'];
+            } else if (is_array($data['meta'])) {
+                $note['category'] = $data['meta'];
             }
-        } else {
-            $note['category'] = [];
         }
 
         // tags
-        if (is_array($data['tags'])) {
-            $note['tags'] = implode(',', $data['tags']);
+        if (!empty($data['tags'])) {
+            $note['tags'] = $data['tags'];
         }
 
         // attachment
@@ -567,67 +523,47 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $save->invoke($editor, $note);
 
         return array(
-            'type' => $type,
             'nid' => intval($editor->cid)
         );
     }
 
     /**
-     * 更新笔记
-     *
-     * @param array $data
-     * @param string $type
-     * @return array|Exception
-     * @throws ReflectionException
-     * @throws Typecho_Exception
-     * @throws Typecho_Widget_Exception
-     * @access public
+     * @param $data
+     * @return bool
+     * @throws Crash
      */
-    public function metcip_kat_note_modify($data, $type = 'post')
+    public function metcip_kat_note_roll($data)
     {
-        return $this->metcip_kat_note_create($data, $type);
-    }
+        $nid = intval($data['nid']);
+        $alias = 'Widget_Contents_Post_Edit';
 
-    /**
-     * 删除笔记
-     *
-     * @param $nid
-     * @param string $type
-     * @return boolean|Exception
-     * @throws Typecho_Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_note_remove($nid, $type = 'post')
-    {
-        // type
-        if ($type == 'page') {
-            $this->checkAccess('editor');
-
-            $this->singletonWidget(
-                'Widget_Contents_Page_Edit', NULL, array('cid' => $nid)
-            )->deletePage();
-        } else {
-            $this->checkAccess();
-
-            $this->singletonWidget(
-                'Widget_Contents_Post_Edit', NULL, array('cid' => $nid)
-            )->deletePost();
+        if ($nid > 0) switch ($data['type']) {
+            case 'post':
+                $this->check_access();
+                break;
+            case 'page':
+                $this->check_access('editor');
+                $alias = 'Widget_Contents_Page_Edit';
+                break;
+            default:
+                return false;
         }
 
-        return Nabo_Format::successOf();
+        $this->singletonWidget(
+            $alias, NULL, ['cid' => $nid]
+        )->deletePost();
+
+        return Nabo_Format::success();
     }
 
     /**
-     * 笔记自定义字段
-     *
      * @param $data
-     * @return string|Exception
-     * @throws Exception
+     * @return false|string
+     * @throws Crash
      */
-    public function metcip_kat_note_field($data)
+    public function metcip_kat_note_extra($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
         // widget
         $widget = $this->singletonWidget('Widget_Contents_Post_Edit');
@@ -656,16 +592,13 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
     }
 
     /**
-     * 评论
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
+     * @param $data
+     * @return KatAry
+     * @throws Crash
      */
-    public function metcip_kat_discuss_list($data)
+    public function metcip_kat_discuss_drag($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
         // select
         $select = $this->db->select('table.comments.*', 'table.contents.title')->from('table.comments')
@@ -673,7 +606,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         // total
         if ($data['total'] != 'on' || !$this->user->pass('editor', true)) {
-            $select->where('table.comments.ownerId = ?', $this->liteuser->uid());
+            $select->where('table.comments.ownerId = ?', $this->liteuser->uid);
         }
 
         // nid
@@ -688,19 +621,19 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         // status
         if (isset($data['status'])) {
-            $select->where('table.comments.status = ?', $data['status']);
+            $select->where('table.comments.status = ?', Nabo_Format::discuss_status($data['status']));
         }
 
         // search
-        if (isset($struct['keywords'])) {
-            $searchQuery = Nabo_Format::searchOf($struct['keywords']);
+        if (isset($struct['search'])) {
+            $searchQuery = Nabo_Format::search($struct['search']);
             $select->where('table.comments.author LIKE ? OR table.comments.text LIKE ? OR table.comments.url LIKE ?',
                 $searchQuery, $searchQuery, $searchQuery
             );
         }
 
         // paging
-        Nabo_Format::pagingOf($data, $page, $size);
+        Nabo_Format::paging($data, $page, $size);
 
         // fetch
         $comments = $this->db->fetchAll(
@@ -726,24 +659,21 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 //            }
 //        }
 
-        return Nabo_Format::discussesOf($comments);
+        return Nabo_Format::discuses($comments);
     }
 
     /**
-     * 同步评论
-     *
-     * @access public
      * @param $did
-     * @return array|Exception
-     * @throws Exception
+     * @return Crash|KatAny
+     * @throws Crash
      */
-    public function metcip_kat_discuss_sync($did)
+    public function metcip_kat_discuss_pull($did)
     {
-        $this->checkAccess();
+        $this->check_access();
 
         // check
         if (empty($did)) {
-            return new Exception('评论不存在', 404);
+            return new Crash('评论不存在', 404);
         }
 
         // select
@@ -752,49 +682,92 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         // comment
         if (empty($comment = $this->db->fetchRow($select->where('coid = ?', $did)->limit(1)))) {
-            return new Exception('评论不存在', 404);
+            return new Crash('评论不存在', 404);
         }
 
         // total
-        if ($comment['ownerId'] != $this->liteuser->uid() || !$this->user->pass('editor', true)) {
-            return new Exception('没有获取评论的权限', 403);
+        if ($comment['ownerId'] != $this->liteuser->uid || !$this->user->pass('editor', true)) {
+            return new Crash('没有获取评论的权限', 403);
         }
 
-        return Nabo_Format::discussOf($comment);
+        return Nabo_Format::discuss($comment);
     }
 
     /**
-     * 创建评论
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
+     * @param $data
+     * @return Crash|KatAny
+     * @throws Crash
+     * @throws ReflectionException
      */
-    public function metcip_kat_discuss_create($data)
+    public function metcip_kat_discuss_push($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
-        if (!isset($data['message'])) {
-            return new Exception('评论内容为空', 404);
+        // nid
+        $nid = (int)$data['nid'];
+
+        // rely
+        $rely = (int)$data['rely'];
+
+        // check
+        if ($data['did'] > 0) {
+            $request = array(
+                'coid' => $data['did']
+            );
+
+            if (isset($data['mail'])) {
+                $request['mail'] = $data['mail'];
+            }
+
+            if (isset($data['site'])) {
+                $request['url'] = $data['site'];
+            }
+
+            if (isset($data['author'])) {
+                $request['author'] = $data['author'];
+            }
+
+            if (isset($data['message'])) {
+                $request['text'] = $data['message'];
+            }
+
+            // widget
+            $editor = $this->singletonWidget(
+                'Widget_Comments_Edit', NULL, $request, true
+            )->editComment();
+
+            // extract
+            $extract = $editor->response->extract('throwJson');
+
+            if ($extract['success']) {
+                return Nabo_Format::discuss(
+                    $extract['comment']
+                );
+            }
+
+            return new Crash(
+                $extract['message']
+            );
         }
 
-        if (empty($data['nid']) || empty($row = $this->db->fetchRow($this->select()->where('cid = ?', $data['nid'])->limit(1)))) {
-            return new Exception(_t('文章不存在'), 404);
+        if (!isset($data['message'])) {
+            return new Crash(
+                '评论内容为空', 404
+            );
+        }
+
+        if (empty($row = $this->db->fetchRow(
+            $this->select()->where('cid = ?', $nid)->limit(1)))) {
+            return new Crash(_t('笔记不存在'), 404);
         }
 
         // push
         $this->push($row);
 
-        // allow
-        if (!$this->allow('comment')) {
-            return new Exception(_t('该文章不允许评论'), 403);
-        }
-
         $request = array(
             'type' => 'comment',
             'text' => $data['message'],
-            'parent' => $data['oid'],
+            'parent' => $rely,
         );
 
         // close anti
@@ -807,9 +780,14 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         // reflection
         $ref = new ReflectionClass($editor);
-        $property_content = $ref->getProperty('_content');
+        $property_content = $ref->getProperty(
+            property_exists($editor, 'content')
+                ? 'content' : '_content'
+        );
+
         $property_content->setAccessible(true);
         $property_content->setValue($editor, $this);
+
         $comment = $ref->getMethod('comment');
         $comment->setAccessible(true);
 
@@ -819,513 +797,290 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             $comment->invoke($editor);
         } catch (Exception $e) {
             ob_end_clean();
-            return new Exception($e->getMessage());
+            return new Crash($e->getMessage());
         }
         ob_end_clean();
 
-        return Nabo_Format::discussOf(
-            end($editor->stack)
+        return Nabo_Format::discuss(
+            Nabo_Format::lastOf($editor)
         );
     }
 
     /**
-     * 编辑评论
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
-     */
-    public function metcip_kat_discuss_modify($data)
-    {
-        $this->checkAccess('editor');
-
-        if (empty($data['did'])) {
-            return new Exception('评论不存在');
-        }
-
-        $request = array(
-            'coid' => $data['did']
-        );
-
-        if (isset($data['nickname'])) {
-            $request['author'] = $data['nickname'];
-        }
-
-        if (isset($data['mail'])) {
-            $request['mail'] = $data['mail'];
-        }
-
-        if (isset($data['site'])) {
-            $request['url'] = $data['site'];
-        }
-
-        if (isset($data['message'])) {
-            $request['text'] = $data['message'];
-        }
-
-        // widget
-        $editor = $this->singletonWidget(
-            'Widget_Comments_Edit', NULL, $request, true
-        )->editComment();
-
-        // extract
-        $extract = $editor->response->extract('throwJson');
-
-        if ($extract['success']) {
-            return Nabo_Format::discussOf(
-                $extract['comment']
-            );
-        }
-
-        return new Exception($extract['message']);
-    }
-
-    /**
-     * 标记评论
-     *
-     * @access public
-     * @param $status
-     * @param array $did
-     * @return boolean|Exception
+     * @param $data
+     * @return bool|Crash
+     * @throws Crash
      * @throws ReflectionException
-     * @throws Typecho_Exception
-     * @throws Exception
      */
-    public function metcip_kat_discuss_remark($did, $status)
+    public function metcip_kat_discuss_mark($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
-        if (!is_array($did)) {
-            return new Exception('评论不存在');
+        if (empty($did = $data['did'])) {
+            return new Crash('评论不存在');
         }
 
-        if (empty($status)) {
-            return new Exception('不必更新的情况');
+        if (empty($status = $data['status'])) {
+            return new Crash(
+                '不必更新的情况'
+            );
         }
 
         $editor = $this->singletonWidget('Widget_Comments_Edit');
         $mark = (new ReflectionClass($editor))->getMethod('mark');
         $mark->setAccessible('mark');
 
-        $updateRows = 0;
-        foreach ($did as $id) {
-            if ($mark->invoke($editor, $id, $status)) {
-                $updateRows++;
-            }
+        if ($mark->invoke($editor, $did,
+            Nabo_Format::discuss_status($status))) {
+            return true;
         }
 
-        return $updateRows != 0;
+        return false;
     }
 
     /**
-     * 删除评论
-     *
-     * @access public
-     * @param int $did
-     * @return string|Exception
-     * @throws Exception
+     * @param $data
+     * @return bool|Crash
+     * @throws Crash
      */
-    public function metcip_kat_discuss_remove($did)
+    public function metcip_kat_discuss_roll($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
-        if (!is_array($did)) {
-            return new Exception('评论不存在', 404);
+        // did
+        if (empty($did = $data['did'])) {
+            return new Crash('评论不存在', 404);
         }
 
         // widget
         $this->singletonWidget(
-            'Widget_Comments_Edit', NULL, array('coid' => $did)
+            'Widget_Comments_Edit',
+            NULL, ['coid' => [$did]]
         )->deleteComment();
 
-        return Nabo_Format::successOf();
+        return Nabo_Format::success();
     }
 
     /**
-     * 分类
-     *
      * @param $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
+     * @return KatAry
+     * @throws Crash
      */
-    public function metcip_kat_meta_list($data)
+    public function metcip_kat_meta_drag($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         // fetch
         $metas = $this->db->fetchAll($this->db->select()
             ->from('table.metas')
-            ->where('type = ?', $data['type'] == 'tag' ? 'tag' : 'category')
+            ->where('type = ?', 'category')
             ->order('table.metas.order'));
 
-        if (isset($data['filter'])) {
-            $list = [];
-            if (is_array($data['filter'])) {
-                foreach ($metas as $meta) {
-                    $m = [];
-                    foreach ($data['filter'] as $filter) {
-                        $m[$filter] = $meta[$filter];
-                    }
-                    $list[] = $m;
-                }
-            } else {
-                foreach ($metas as $meta) {
-                    $list[] = $meta[$data['filter']];
-                }
+        return Nabo_Format::metas($metas);
+    }
+
+    /**
+     * @param $data
+     * @return Crash|KatAny
+     * @throws Crash
+     */
+    public function metcip_kat_meta_push($data)
+    {
+        $this->check_access('editor');
+
+        if (empty($data['mid'])) {
+            $meta = array(
+                'name' => $data['name'],
+                'slug' => $data['slug'],
+                'parent' => intval($data['rely'])
+            );
+
+            // widget
+            $editor = $this->singletonWidget(
+                'Widget_Metas_Category_Edit', NULL, $meta
+            )->insertCategory();
+
+            return Nabo_Format::meta(
+                Nabo_Format::lastOf($editor)
+            );
+        } else {
+            // fetch
+            if (empty($this->db->fetchRow(
+                $this->db->select('mid')->from('table.metas')
+                    ->where('type = ? AND mid = ?', 'category', $data['mid'])))) {
+                return new Crash(
+                    '没有查找到分类', 404
+                );
             }
-            return $list;
-        }
 
-        return Nabo_Format::metasOf($metas);
+            // meta
+            $meta = array();
+
+            if (isset($data['name'])) {
+                $meta['name'] = $data['name'];
+            }
+
+            if (isset($data['slug'])) {
+                $meta['slug'] = $data['slug'];
+            }
+
+            if (isset($data['rely'])) {
+                $meta['parent'] = $data['rely'];
+            }
+
+            // widget
+            $editor = $this->singletonWidget(
+                'Widget_Metas_Category_Edit', NULL, $meta
+            )->updateCategory();
+
+            return Nabo_Format::meta(
+                Nabo_Format::lastOf($editor)
+            );
+        }
     }
 
     /**
-     * 分类
-     *
-     * @param $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_category_list($data)
-    {
-        $data['type'] = 'category';
-        return $this->metcip_kat_meta_list($data);
-    }
-
-    /**
-     * 所有标签
-     *
-     * @param $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_tag_list($data)
-    {
-        $data['type'] = 'tag';
-        return $this->metcip_kat_meta_list($data);
-    }
-
-    /**
-     * 创建分类
-     *
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_category_create($data)
-    {
-        $this->checkAccess('editor');
-
-        $meta = array(
-            'name' => $data['name'],
-            'slug' => $data['slug'],
-            'parent' => isset($data['_mid']) ? $data['_mid'] : 0,
-            'description' => isset($data['desc']) ? $data['desc'] : $data['name']
-        );
-
-        // widget
-        $editor = $this->singletonWidget(
-            'Widget_Metas_Category_Edit', NULL, $meta
-        )->insertCategory();
-
-        return Nabo_Format::metaOf(
-            end($editor->stack)
-        );
-    }
-
-    /**
-     * 创建标签
-     *
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_tag_create($data)
-    {
-        $this->checkAccess('editor');
-
-        $meta = array(
-            'name' => $data['name'],
-            'slug' => $data['slug']
-        );
-
-        // widget
-        $editor = $this->singletonWidget(
-            'Widget_Metas_Tag_Edit', NULL, $meta
-        )->insertTag();
-
-        return Nabo_Format::metaOf(
-            end($editor->stack)
-        );
-    }
-
-    /**
-     * 编辑分类
-     *
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_category_modify($data)
-    {
-        $this->checkAccess('editor');
-
-        if (empty($data['mid'])) {
-            return new Exception('请求错误');
-        }
-
-        // fetch
-        if (empty($meta = $this->db->fetchRow(
-            $this->db->select('mid')->from('table.metas')
-                ->where('type = ? AND mid = ?', 'category', $data['mid'])))) {
-            return new Exception('没有查找到分类', 404);
-        }
-
-        if (isset($data['name'])) {
-            $meta['name'] = $data['name'];
-        }
-
-        if (isset($data['slug'])) {
-            $meta['slug'] = $data['slug'];
-        }
-
-        if (isset($data['oid'])) {
-            $meta['parent'] = $data['oid'];
-        }
-
-        if (isset($data['desc'])) {
-            $meta['description'] = $data['desc'];
-        }
-
-        // widget
-        $editor = $this->singletonWidget(
-            'Widget_Metas_Category_Edit', NULL, $meta
-        )->updateCategory();
-
-        return Nabo_Format::metaOf(
-            end($editor->stack)
-        );
-    }
-
-    /**
-     * 编辑标签
-     *
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
-     * @access public
-     */
-    public function metcip_kat_tag_modify($data)
-    {
-        $this->checkAccess('editor');
-
-        if (empty($data['mid'])) {
-            return new Exception('请求错误');
-        }
-
-        // fetch
-        if (empty($meta = $this->db->fetchRow(
-            $this->db->select('mid')->from('table.metas')
-                ->where('type = ? AND mid = ?', 'tag', $data['mid'])))) {
-            return new Exception('没有查找到标签', 404);
-        }
-
-        if (isset($data['name'])) {
-            $meta['name'] = $data['name'];
-        }
-
-        if (isset($data['slug'])) {
-            $meta['slug'] = $data['slug'];
-        }
-
-        // widget
-        $editor = $this->singletonWidget(
-            'Widget_Metas_Tag_Edit', NULL, $meta
-        )->updateTag();
-
-        return Nabo_Format::metaOf(
-            end($editor->stack)
-        );
-    }
-
-    /**
-     * 删除分类
-     *
-     * @access public
      * @param $mid
-     * @return boolean|Exception
-     * @throws Exception
+     * @return bool|Crash
+     * @throws Crash
      */
-    public function metcip_kat_category_remove($mid)
+    public function metcip_kat_meta_roll($mid)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
-        if (!is_array($mid)) {
-            return new Exception('请求错误');
+        if (empty($mid)) {
+            return new Crash(
+                '分类不存在'
+            );
         }
 
         $this->singletonWidget(
-            'Widget_Metas_Category_Edit', NULL, array('mid' => $mid)
+            'Widget_Metas_Category_Edit',
+            NULL, ['mid' => [$mid]]
         )->deleteCategory();
 
-        return Nabo_Format::successOf();
+        return Nabo_Format::success();
     }
 
     /**
-     * 删除标签
-     *
-     * @access public
-     * @param $mid
-     * @return boolean|Exception
-     * @throws Exception
+     * @param $data
+     * @return bool|Crash
+     * @throws Crash
      */
-    public function metcip_kat_tag_remove($mid)
+    public function metcip_kat_meta_sort($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
-        if (!is_array($mid)) {
-            return new Exception('请求错误');
+        if (!is_array($metas = $data['metas'])) {
+            return new Crash(
+                '分类集群错误'
+            );
         }
 
-        $this->singletonWidget(
-            'Widget_Metas_Tag_Edit', NULL, array('mid' => $mid)
-        )->deleteTag();
-
-        return Nabo_Format::successOf();
-    }
-
-    /**
-     * 分类或标签排序
-     *
-     * @access public
-     * @param $type
-     * @param $mid
-     * @return boolean|Exception
-     * @throws Typecho_Exception
-     * @throws Exception
-     */
-    public function metcip_kat_meta_sort($type, $mid)
-    {
-        $this->checkAccess('editor');
-
-        if (!is_array($mid) || !in_array($type, ['category', 'tag'])) {
-            return new Exception("请求错误");
+        if (!in_array($type = $data['type'], ['category', 'tag'])) {
+            return new Crash(
+                '无法识别'
+            );
         }
 
         $this->singletonWidget(
             'Widget_Abstract_Metas'
-        )->sort(array('mid' => $mid), $type);
+        )->sort(['mid' => $metas], $type);
 
         return true;
     }
 
     /**
-     * 媒体文件
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
+     * @param $data
+     * @return KatAry
+     * @throws Crash
      */
-    public function metcip_kat_media_list($data)
+    public function metcip_kat_media_drag($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
         // select
         $select = $this->select()->where('table.contents.type = ?', 'attachment');
 
         if (!$this->user->pass('editor', true)) {
-            $select->where('table.contents.authorId = ?', $this->liteuser->uid());
+            $select->where('table.contents.authorId = ?', $this->liteuser->uid);
         }
 
         // search
-        if (isset($data['keywords'])) {
-            $searchQuery = Nabo_Format::searchOf($data['keywords']);
+        if (isset($data['search'])) {
+            $searchQuery = Nabo_Format::search($data['search']);
             $select->where('table.contents.title LIKE ? OR table.contents.text LIKE ?',
                 $searchQuery, $searchQuery
             );
         }
 
-        Nabo_Format::pagingOf($data, $page, $size);
+        Nabo_Format::paging($data, $page, $size);
 
         // page
         $select->order('table.contents.created', Typecho_Db::SORT_DESC)
             ->page($page, $size);
 
-        return Nabo_Format::mediasOf(
+        return Nabo_Format::medias(
             $this->db->fetchAll($select)
         );
     }
 
     /**
-     * 删除附件
-     *
-     * @access public
-     * @param array $mid
-     * @return string|Exception
-     * @throws Exception
+     * @param $data
+     * @return bool|Crash
+     * @throws Crash
      */
-    public function metcip_kat_media_remove($mid)
+    public function metcip_kat_media_roll($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
-        if (!is_array($mid)) {
-            return new Exception('缺少必要参数');
+        if (empty($mid = $data['mid'])) {
+            return new Crash(
+                '缺少必要参数', 404
+            );
         }
 
         // widget
         $this->singletonWidget(
-            'Widget_Contents_Attachment_Edit', NULL, array('cid' => $mid)
+            'Widget_Contents_Attachment_Edit',
+            NULL, ['cid' => [$mid]]
         )->deleteAttachment();
 
-        return Nabo_Format::successOf();
+        return Nabo_Format::success();
     }
 
     /**
-     * 清理未归档的附件
-     *
-     * @access public
      * @param $data
-     * @return boolean|Exception
-     * @throws Exception
+     * @return bool
+     * @throws Crash
      */
     public function metcip_kat_media_clear($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         $this->singletonWidget('Widget_Contents_Attachment_Edit')->clearAttachment();
 
-        return Nabo_Format::successOf();
+        return Nabo_Format::success();
     }
 
     /**
-     * 编辑附件
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception
-     * @throws Exception
+     * @param $data
+     * @return Crash|KatAny
+     * @throws Crash
      */
-    public function metcip_kat_media_modify($data)
+    public function metcip_kat_media_push($data)
     {
-        $this->checkAccess();
+        $this->check_access();
 
         if (empty($data['mid']) || empty($data['name'])) {
-            return new Exception('缺少必要参数', 404);
+            return new Crash('缺少必要参数', 404);
         }
 
         $request = array(
             'cid' => $data['mid'],
-            'slug' => $data['slug'],
             'name' => $data['name'],
-            'description' => $data['message']
+            'slug' => $data['slug'],
+            'description' => $data['intro'],
         );
 
         // widget
@@ -1337,27 +1092,24 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $editor->updateAttachment();
 
         if ($editor->have()) {
-            return Nabo_Format::mediaOf(
-                end($editor->stack)
+            return Nabo_Format::media(
+                Nabo_Format::lastOf($editor)
             );
         }
-        return new Exception('更新失败');
+        return new Crash('更新失败');
     }
 
     /**
-     * 内容替换 - 插件
-     *
-     * @access public
-     * @param array $struct
-     * @return string|Exception
-     * @throws Exception
+     * @param $struct
+     * @return Crash|string
+     * @throws Crash
      */
     public function metcip_kat_plugin_replace($struct)
     {
-        $this->checkAccess('administrator');
+        $this->check_access('administrator');
 
         if (empty($struct['former']) || empty($struct['last']) || empty($struct['object'])) {
-            return new Exception('缺少必要参数', 404);
+            return new Crash('缺少必要参数', 404);
         } else {
             $former = $struct['former'];
             $last = $struct['last'];
@@ -1395,64 +1147,63 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                 return '替换成功';
 
             } else {
-                return new Exception('不含此参数,无法替换', 202);
+                return new Crash('不含此参数,无法替换', 202);
             }
         }
     }
 
     /**
-     * 我的动态 - 插件
-     *
-     * @access public
-     * @param array $struct
-     * @return array|Exception|int
-     * @throws Exception
+     * @param $struct
+     * @return Crash|KatAry
+     * @throws Crash
      */
-    public function metcip_kat_plugin_dynamics_select($struct)
+    public function metcip_kat_dynamic_drag($struct)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         if (!isset($this->options->plugins['activated']['Dynamics'])) {
-            return new Exception('没有启用我的动态插件', 404);
+            return new Crash('没有启用我的动态插件', 404);
         }
 
-        Nabo_Format::pagingOf($struct, $page, $size);
+        Nabo_Format::paging(
+            $struct, $page, $size
+        );
 
         $list = $this->pluginHandle('Nabo_Dynamics')
             ->trigger($pluggable)
-            ->select($this->liteuser->uid(), $struct['status'], $size, $page);
+            ->select(
+                $this->liteuser->uid,
+                Nabo_Format::dynamic_status($struct['status']), $size, $page
+            );
 
         if ($pluggable) {
-            return Nabo_Format::dynamicsOf($list);
+            return Nabo_Format::dynamics($list);
         }
 
-        return new Exception('动态插件不存在');
+        return new Crash('动态插件不存在');
     }
 
     /**
-     * 我的动态 - 插件
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception|int
-     * @throws Exception
+     * @param $data
+     * @return Crash|KatAny
+     * @throws Crash
      */
-    public function metcip_kat_plugin_dynamics_insert($data)
+    public function metcip_kat_dynamic_push($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         if (!is_array($data)) {
-            return new Exception('非法请求');
+            return new Crash('非法请求');
         }
 
-        if (empty($data['text'])) {
-            return new Exception('无动态内容', 404);
+        if (empty($data['content'])) {
+            return new Crash('无动态内容', 404);
         }
 
         $dynamic = array(
-            'authorId' => $this->liteuser->uid(),
-            'text' => $data['text'],
-            'status' => $data['status'],
+            'authorId' => $this->liteuser->uid,
+            'text' => $data['content'],
+            'status' => Nabo_Format::dynamic_status($data['status']),
             'modified' => $date = $this->options->time
         );
 
@@ -1464,137 +1215,166 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
         $result = $this->pluginHandle('Nabo_Dynamics')
             ->trigger($pluggable)
-            ->{$insert ? 'insert' : 'modify'}($this->liteuser->uid(), $dynamic);
+            ->{$insert ? 'insert' : 'modify'}(
+                $this->liteuser->uid, $dynamic
+            );
         if ($pluggable) {
-            return Nabo_Format::dynamicOf($result);
+            return Nabo_Format::dynamic($result);
         }
 
-        return new Exception('动态插件不存在');
+        return new Crash('动态插件不存在');
     }
 
     /**
-     * 我的动态 - 插件
-     *
-     * @access public
-     * @param array $did
-     * @return Exception|int
-     * @throws Exception
+     * @param $did
+     * @return Crash
+     * @throws Crash
      */
-    public function metcip_kat_plugin_dynamics_delete($did)
+    public function metcip_kat_dynamic_roll($did)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         if (!is_array($did)) {
-            return new Exception('非法请求');
+            return new Crash('非法请求');
         }
 
         $deleteCount = $this->pluginHandle('Nabo_Dynamics')
             ->trigger($pluggable)
-            ->delete($this->liteuser->uid(), $did);
+            ->delete(
+                $this->liteuser->uid, $did
+            );
 
         if ($pluggable) {
             return $deleteCount;
         }
 
-        return new Exception('动态插件不存在');
+        return new Crash('动态插件不存在');
     }
 
     /**
-     * 友情链接 - 插件
-     *
-     * @access public
-     * @param array $struct
-     * @return array|Exception|int
-     * @throws Exception
+     * @param $data
+     * @return Crash|KatAny|KatAry
+     * @throws Crash
      */
-    public function metcip_kat_plugin_links_select($struct)
+    public function metcip_kat_friend_drag($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         if (!isset($this->options->plugins['activated']['Links'])) {
-            return new Exception('没有启用友情链接插件', 404);
+            return new Crash('没有启用友情链接插件', 404);
         }
 
-        Nabo_Format::pagingOf($struct, $page, $size);
+        Nabo_Format::paging(
+            $data, $page, $size
+        );
+
+        $list = $this->pluginHandle('Nabo_Friend')
+            ->trigger($pluggable)
+            ->select(
+                $this->liteuser->uid,
+                strval($data['team']), $size, $page
+            );
+
+        if ($pluggable) {
+            return Nabo_Format::friend($list);
+        }
 
         $select = $this->db->select()
-            ->from('table.links')
-            ->order('order')
+            ->from('table.links');
+
+        if (!empty($data['team'])) {
+            $select->where('sort = ?', $data['team']);
+        }
+
+        $select->order('order')
             ->page($page, $size);
 
-        $list = [];
-        foreach ($this->db->fetchAll($select) as $link) {
-            settype($link['lid'], 'int');
-            settype($link['order'], 'int');
-            $list[] = $link;
-        }
-        return $list;
+        return Nabo_Format::friends(
+            $this->db->fetchAll($select)
+        );
     }
 
     /**
-     * 友情链接 - 插件
-     *
-     * @access public
-     * @param array $data
-     * @return array|Exception|int
-     * @throws Exception
+     * @param $data
+     * @return Crash|KatAny
+     * @throws Crash
      */
-    public function metcip_kat_plugin_links_insert($data)
+    public function metcip_kat_friend_push($data)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         if (!is_array($data)) {
-            return new Exception('非法请求', 403);
+            return new Crash('非法请求', 403);
         }
 
-        if (!isset($data['name'])) {
-            return new Exception('没有设定名字');
+        if (empty($data['name'])) {
+            return new Crash('没有设定名字');
         }
 
-        if (!isset($data['url'])) {
-            return new Exception('没有设定链接地址');
+        if (empty($data['link'])) {
+            return new Crash('没有设定链接地址');
         }
 
         $link = array(
             'name' => $data['name'],
-            'url' => $data['url'],
+            'url' => $data['link'],
             'image' => $data['image'],
-            'description' => $data['description'],
-            'user' => $data['url'],
-            'order' => $data['order'],
-            'sort' => $data['sort']
+            'sort' => $data['team'],
+            'user' => $data['extra']
         );
 
-        if (empty($data['lid'])) {
-            $link['order'] = $this->db->fetchObject($this->db
-                    ->select(array('MAX(order)' => 'maxOrder'))
-                    ->from('table.links'))->maxOrder + 1;
-            $link['lid'] = $this->db->query($this->db->insert('table.links')->rows($link));
-        } else {
-            $this->db->query($this->db->update('table.links')
-                ->rows($link)
-                ->where('lid = ?', $data['lid']));
+        if ($data['order'] > 0) {
+            $link['order'] = $data['order'];
         }
 
-        settype($link['lid'], 'int');
-        settype($link['order'], 'int');
-        return $link;
+        // do
+        $insert = $data['fid'] < 1;
+
+        $result = $this->pluginHandle('Nabo_Friend')
+            ->trigger($pluggable)
+            ->{$insert ? 'insert' : 'modify'}(
+                $this->liteuser->uid, $link
+            );
+        if ($pluggable) {
+            return Nabo_Format::friend($result);
+        }
+
+        if ($insert) {
+            $link['order'] = $this->db->fetchObject($this->db
+                    ->select(['MAX(order)' => 'maxOrder'])
+                    ->from('table.links'))->maxOrder + 1;
+            $link['lid'] = $this->db->query(
+                $this->db->insert('table.links')->rows($link));
+        } else {
+            $this->db->query($this->db->update('table.links')
+                ->where('lid = ?', $data['fid'])
+                ->rows($link));
+        }
+
+        return Nabo_Format::friend($link);
     }
 
     /**
-     * 友情链接 - 插件
-     *
-     * @access public
-     * @param array $lid
-     * @return array|Exception|int
-     * @throws Exception
+     * @param $lid
+     * @return Crash|int
+     * @throws Crash
      */
-    public function metcip_kat_plugin_links_delete($lid)
+    public function metcip_kat_friend_roll($lid)
     {
-        $this->checkAccess('editor');
+        $this->check_access('editor');
 
         if (!is_array($lid)) {
-            return new Exception('缺少参数');
+            return new Crash('缺少参数');
+        }
+
+        $deleteCount = $this->pluginHandle('Nabo_Friend')
+            ->trigger($pluggable)
+            ->delete(
+                $this->liteuser->uid, $lid
+            );
+
+        if ($pluggable) {
+            return $deleteCount;
         }
 
         $deleteCount = 0;
@@ -1608,242 +1388,25 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
     }
 
     /**
-     * 插件配置管理
-     *
-     * @access public
-     * @param array $data
-     * @return string|Exception
-     * @throws Exception
-     */
-    public function metcip_kat_config_plugin($data)
-    {
-        $this->checkAccess('administrator');
-
-        if (empty($this->option->allowPlugin)) {
-            return new Exception("已关闭插件设置能力\n可以在南博插件里开启设置能力", 202);
-        }
-
-        if (!isset($data['pluginName'])) {
-            return new Exception('缺少必要参数', 403);
-        }
-
-        if (!isset($this->options->plugins['activated'][$data['pluginName']])) {
-            return new Exception('没有启用插件', 403);
-        }
-
-        $className = "{$data['pluginName']}_Plugin";
-        if ($data['method'] == 'set') {
-            if (empty($data['settings'])) {
-                return new Exception('settings 不规范');
-            }
-
-            $settings = json_decode($data['settings'], true);
-
-            ob_start();
-            $form = new Typecho_Widget_Helper_Form();
-            call_user_func(array($className, 'config'), $form);
-
-            foreach ($settings as $key => $val) {
-                if (!empty($form->getInput($key))) {
-                    $_GET[$key] = $settings[$key];
-                    $form->getInput($key)->value($val);
-                }
-            }
-
-            /** 验证表单 */
-            if ($form->validate()) {
-                return new Exception('表中有数据不符合配置要求');
-            }
-
-            $settings = $form->getAllRequest();
-            ob_end_clean();
-
-            $edit = $this->singletonWidget(
-                'Widget_Plugins_Edit'
-            );
-            if (!$edit->configHandle($data['pluginName'], $settings, false)) {
-                Widget_Plugins_Edit::configPlugin($data['pluginName'], $settings);
-            }
-
-            return '设置成功';
-        }
-
-        ob_start();
-        $config = $this->singletonWidget(
-            'Widget_Plugins_Config', NULL, ['config' => $data['pluginName']]
-        );
-        $form = $config->config();
-        $form->setAction(NULL);
-        $form->setAttribute('id', 'form');
-        $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
-        $form->render();
-
-        return ob_get_clean();
-    }
-
-    /**
      * @param $data
-     * @return string|Exception
-     * @throws Exception
+     * @return Crash|false|string
+     * @throws Crash
      */
-    public function metcip_kat_config_profile($data)
+    public function metcip_kat_setting_theme($data)
     {
-        $this->checkAccess('administrator');
-
-        if (!isset($data['option'])) {
-            return new Exception('缺少必要参数', 403);
-        }
-
-        if ($data['method'] == 'set') {
-
-            if (empty($this->option->allowSetting)) {
-                return new Exception("已关闭基本设置能力\n可以在南博插件里开启设置能力", 202);
-            }
-
-            if (empty($data['settings'])) {
-                return new Exception('settings 不规范');
-            }
-            $settings = json_decode($data['settings'], true);
-
-            ob_start();
-            $config = $this->singletonWidget(
-                'Widget_Users_Profile',
-                NULL,
-                $settings
-            );
-            if ($data['option'] == 'profile') {
-                $config->updateProfile();
-            } else if ($data['option'] == 'options') {
-                $config->updateOptions();
-            } else if ($data['option'] == 'password') {
-                $config->updatePassword();
-//            } else if ($struct['option'] == 'personal') {
-//                $config->updatePersonal();
-            }
-            ob_end_clean();
-
-            return '设置已经保存';
-        }
-
-        ob_start();
-        $config = $this->singletonWidget(
-            'Widget_Users_Profile'
-        );
-
-        if (empty($data['settings'])) {
-            return new Exception('settings 不规范');
-        }
-        $settings = json_decode($data['settings'], true);
-
-        ob_start();
-        $config = $this->singletonWidget(
-            'Widget_Users_Profile',
-            NULL,
-            $settings
-        );
-        if ($data['option'] == 'profile') {
-            $config->updateProfile();
-        } else if ($data['option'] == 'options') {
-            $config->updateOptions();
-        } else if ($data['option'] == 'password') {
-            $config->updatePassword();
-//            } else if ($struct['option'] == 'personal') {
-//                $config->updatePersonal();
-        }
-        ob_end_clean();
-
-        return ob_get_clean();
-    }
-
-    /**
-     * @param $data
-     * @return string|Exception
-     * @throws Exception
-     */
-    public function metcip_kat_config_option($data)
-    {
-        $this->checkAccess('administrator');
-
-        if (!isset($data['option'])) {
-            return new Exception('缺少必要参数', 403);
-        }
-
-        if ($data['option'] == 'general') {
-            $alias = 'Widget_Options_General';
-        } else if ($data['option'] == 'discussion') {
-            $alias = 'Widget_Options_Discussion';
-        } else if ($data['option'] == 'reading') {
-            $alias = 'Widget_Options_Reading';
-        } else if ($data['option'] == 'permalink') {
-            $alias = 'Widget_Options_Permalink';
-        } else {
-            return new Exception('option 不规范');
-        }
-
-        if ($data['method'] == 'set') {
-            if (empty($this->option->allowSetting)) {
-                return new Exception("已关闭基本设置能力\n可以在南博插件里开启设置能力", 202);
-            }
-
-            if (empty($data['settings'])) {
-                return new Exception('settings 不规范');
-            }
-            $settings = json_decode($data['settings'], true);
-
-            ob_start();
-            $config = $this->singletonWidget(
-                $alias,
-                null,
-                $settings
-            );
-            if ($data['option'] == 'general') {
-                $config->updateGeneralSettings();
-            } else if ($data['option'] == 'discussion') {
-                $config->updateDiscussionSettings();
-            } else if ($data['option'] == 'reading') {
-                $config->updateReadingSettings();
-            } else if ($data['option'] == 'permalink') {
-                $config->updatePermalinkSettings();
-            }
-            ob_end_clean();
-
-            return '设置已经保存';
-        }
-
-        ob_start();
-        $config = $this->singletonWidget($alias);
-        $form = $config->form();
-        $form->setAction(NULL);
-        $form->setAttribute('id', 'form');
-        $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
-        $form->render();
-
-        return ob_get_clean();
-    }
-
-    /**
-     * 主题配置管理
-     *
-     * @access public
-     * @param array $data
-     * @return string|Exception
-     * @throws Exception
-     */
-    public function metcip_kat_config_theme($data)
-    {
-        $this->checkAccess('administrator');
+        $this->check_access('administrator');
 
         if (empty($this->option->allowTheme)) {
-            return new Exception("已关闭主题设置能力\n可以在南博插件里开启设置能力", 202);
+            return new Crash("已关闭主题设置能力\n可以在南博插件里开启设置能力", 202);
         }
 
         if (!Widget_Themes_Config::isExists()) {
-            return new Exception('没有主题可配置', 404);
+            return new Crash('没有主题可配置', 404);
         }
 
         if ($data['method'] == 'set') {
             if (empty($data['settings'])) {
-                return new Exception('settings 不规范');
+                return new Crash('settings 不规范');
             }
 
             $settings = json_decode($data['settings'], true);
@@ -1863,7 +1426,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
             /** 验证表单 */
             if ($form->validate()) {
-                return new Exception('表中有数据不符合配置要求');
+                return new Crash('表中有数据不符合配置要求');
             }
 
             $settings = $form->getAllRequest();
@@ -1909,12 +1472,223 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
     /**
      * @param $data
-     * @return array|Exception
-     * @throws Exception
+     * @return Crash|false|string
+     * @throws Crash
      */
-    public function metcip_kat_plugins_list($data)
+    public function metcip_kat_setting_plugin($data)
     {
-        $this->checkAccess('administrator');
+        $this->check_access('administrator');
+
+        if (empty($this->option->allowPlugin)) {
+            return new Crash("已关闭插件设置能力\n可以在南博插件里开启设置能力", 202);
+        }
+
+        if (!isset($data['pluginName'])) {
+            return new Crash('缺少必要参数', 403);
+        }
+
+        if (!isset($this->options->plugins['activated'][$data['pluginName']])) {
+            return new Crash('没有启用插件', 403);
+        }
+
+        $className = "{$data['pluginName']}_Plugin";
+        if ($data['method'] == 'set') {
+            if (empty($data['settings'])) {
+                return new Crash('settings 不规范');
+            }
+
+            $settings = json_decode($data['settings'], true);
+
+            ob_start();
+            $form = new Typecho_Widget_Helper_Form();
+            call_user_func(array($className, 'config'), $form);
+
+            foreach ($settings as $key => $val) {
+                if (!empty($form->getInput($key))) {
+                    $_GET[$key] = $settings[$key];
+                    $form->getInput($key)->value($val);
+                }
+            }
+
+            /** 验证表单 */
+            if ($form->validate()) {
+                return new Crash('表中有数据不符合配置要求');
+            }
+
+            $settings = $form->getAllRequest();
+            ob_end_clean();
+
+            $edit = $this->singletonWidget(
+                'Widget_Plugins_Edit'
+            );
+            if (!$edit->configHandle($data['pluginName'], $settings, false)) {
+                Widget_Plugins_Edit::configPlugin($data['pluginName'], $settings);
+            }
+
+            return '设置成功';
+        }
+
+        ob_start();
+        $config = $this->singletonWidget(
+            'Widget_Plugins_Config', NULL, ['config' => $data['pluginName']]
+        );
+        $form = $config->config();
+        $form->setAction(NULL);
+        $form->setAttribute('id', 'form');
+        $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
+        $form->render();
+
+        return ob_get_clean();
+    }
+
+    /**
+     * @param $data
+     * @return string|Crash
+     * @throws Crash
+     */
+    public function metcip_kat_setting_profile($data)
+    {
+        $this->check_access('administrator');
+
+        if (!isset($data['option'])) {
+            return new Crash('缺少必要参数', 403);
+        }
+
+        if ($data['method'] == 'set') {
+
+            if (empty($this->option->allowSetting)) {
+                return new Crash("已关闭基本设置能力\n可以在南博插件里开启设置能力", 202);
+            }
+
+            if (empty($data['settings'])) {
+                return new Crash('settings 不规范');
+            }
+            $settings = json_decode($data['settings'], true);
+
+            ob_start();
+            $config = $this->singletonWidget(
+                'Widget_Users_Profile',
+                NULL,
+                $settings
+            );
+            if ($data['option'] == 'profile') {
+                $config->updateProfile();
+            } else if ($data['option'] == 'options') {
+                $config->updateOptions();
+            } else if ($data['option'] == 'password') {
+                $config->updatePassword();
+//            } else if ($struct['option'] == 'personal') {
+//                $config->updatePersonal();
+            }
+            ob_end_clean();
+
+            return '设置已经保存';
+        }
+
+        ob_start();
+        $config = $this->singletonWidget(
+            'Widget_Users_Profile'
+        );
+
+        if (empty($data['settings'])) {
+            return new Crash('settings 不规范');
+        }
+        $settings = json_decode($data['settings'], true);
+
+        ob_start();
+        $config = $this->singletonWidget(
+            'Widget_Users_Profile',
+            NULL,
+            $settings
+        );
+        if ($data['option'] == 'profile') {
+            $config->updateProfile();
+        } else if ($data['option'] == 'options') {
+            $config->updateOptions();
+        } else if ($data['option'] == 'password') {
+            $config->updatePassword();
+//            } else if ($struct['option'] == 'personal') {
+//                $config->updatePersonal();
+        }
+        ob_end_clean();
+
+        return ob_get_clean();
+    }
+
+    /**
+     * @param $data
+     * @return string|Crash
+     * @throws Crash
+     */
+    public function metcip_kat_setting_config($data)
+    {
+        $this->check_access('administrator');
+
+        if (!isset($data['option'])) {
+            return new Crash('缺少必要参数', 403);
+        }
+
+        if ($data['option'] == 'general') {
+            $alias = 'Widget_Options_General';
+        } else if ($data['option'] == 'discussion') {
+            $alias = 'Widget_Options_Discussion';
+        } else if ($data['option'] == 'reading') {
+            $alias = 'Widget_Options_Reading';
+        } else if ($data['option'] == 'permalink') {
+            $alias = 'Widget_Options_Permalink';
+        } else {
+            return new Crash('option 不规范');
+        }
+
+        if ($data['method'] == 'set') {
+            if (empty($this->option->allowSetting)) {
+                return new Crash("已关闭基本设置能力\n可以在南博插件里开启设置能力", 202);
+            }
+
+            if (empty($data['settings'])) {
+                return new Crash('settings 不规范');
+            }
+            $settings = json_decode($data['settings'], true);
+
+            ob_start();
+            $config = $this->singletonWidget(
+                $alias,
+                null,
+                $settings
+            );
+            if ($data['option'] == 'general') {
+                $config->updateGeneralSettings();
+            } else if ($data['option'] == 'discussion') {
+                $config->updateDiscussionSettings();
+            } else if ($data['option'] == 'reading') {
+                $config->updateReadingSettings();
+            } else if ($data['option'] == 'permalink') {
+                $config->updatePermalinkSettings();
+            }
+            ob_end_clean();
+
+            return '设置已经保存';
+        }
+
+        ob_start();
+        $config = $this->singletonWidget($alias);
+        $form = $config->form();
+        $form->setAction(NULL);
+        $form->setAttribute('id', 'form');
+        $form->setMethod(Typecho_Widget_Helper_Form::GET_METHOD);
+        $form->render();
+
+        return ob_get_clean();
+    }
+
+    /**
+     * @param $data
+     * @return array|Crash
+     * @throws Crash
+     */
+    public function metcip_kat_plugins_drag($data)
+    {
+        $this->check_access('administrator');
 
         $target = $data['option'] ?: 'typecho';
         $list = [];
@@ -1986,7 +1760,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
                 return $storeList;
             } else {
-                return new Exception('你没有安装 TeStore 插件', 301);
+                return new Crash('你没有安装 TeStore 插件', 301);
             }
         } else {
             $callList = array();
@@ -1999,15 +1773,15 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
     /**
      * @param $data
-     * @return array|Exception
-     * @throws Exception
+     * @return array|Crash
+     * @throws Crash
      */
-    public function metcip_kat_plugins_merge($data)
+    public function metcip_kat_plugins_push($data)
     {
-        $this->checkAccess('administrator');
+        $this->check_access('administrator');
 
         if (empty($this->option->allowPlugin)) {
-            return new Exception("已关闭插件设置能力\n可以在南博插件里开启设置能力", 202);
+            return new Crash("已关闭插件设置能力\n可以在南博插件里开启设置能力", 202);
         }
 
         $target = $data['option'] ?: 'typecho';
@@ -2032,7 +1806,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
                 if ($data['method'] == 'activate') {
                     if ($isActivated) {
-                        return new Exception('该插件已被安装过', 401);
+                        return new Crash('该插件已被安装过', 401);
                     } else {
                         $testore->install();
                     }
@@ -2044,7 +1818,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
                     Typecho_Cookie::get('__typecho_notice'), true
                 )[0];
             } else {
-                return new Exception('你没有安装 TeStore 插件', 301);
+                return new Crash('你没有安装 TeStore 插件', 301);
             }
         } else {
             $plugins = $this->singletonWidget(
@@ -2067,12 +1841,12 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
     /**
      * @param $data
-     * @return array|Exception
-     * @throws Exception
+     * @return array|Crash
+     * @throws Crash
      */
-    public function metcip_kat_themes_list($data)
+    public function metcip_kat_themes_drag($data)
     {
-        $this->checkAccess('administrator');
+        $this->check_access('administrator');
 
         $list = [];
         $themes = $this->singletonWidget('Widget_Themes_List');
@@ -2095,15 +1869,15 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
 
     /**
      * @param $data
-     * @return string|Exception
-     * @throws Exception
+     * @return string|Crash
+     * @throws Crash
      */
-    public function metcip_kat_themes_merge($data)
+    public function metcip_kat_themes_push($data)
     {
-        $this->checkAccess('administrator');
+        $this->check_access('administrator');
 
         if (empty($this->option->allowTheme)) {
-            return new Exception("已关闭主题设置能力\n可以在南博插件里开启设置能力", 202);
+            return new Crash("已关闭主题设置能力\n可以在南博插件里开启设置能力", 202);
         }
 
         $themes = $this->singletonWidget(
@@ -2115,6 +1889,6 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
             return '外观已经改变';
         }
 
-        return new Exception('未知错误');
+        return new Crash('未知错误');
     }
 }

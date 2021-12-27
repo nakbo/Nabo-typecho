@@ -20,35 +20,18 @@ class Kat_Server
      *
      * @var string
      */
-    const VERSION = "1.0.0";
-
-    /**
-     * 数据
-     *
-     * @var array
-     */
-    protected $data;
+    const VERSION = '1.0.0';
 
     /**
      * HOOK函数
      *
-     * @access private
      * @var array
      */
-    protected $hooks = [];
-
-    /**
-     * 签名函数
-     *
-     * @access private
-     * @var array
-     */
-    protected $ciphers = [];
+    protected $hookers = [];
 
     /**
      * 回调函数
      *
-     * @access private
      * @var array
      */
     protected $methods = [];
@@ -56,7 +39,6 @@ class Kat_Server
     /**
      * 需验函数名
      *
-     * @access private
      * @var array
      */
     protected $metcips = [];
@@ -65,288 +47,287 @@ class Kat_Server
      * Kat_Server
      *
      * @access public
+     * @param $attach
      */
-    public function __construct()
+    public function __construct($attach = null)
     {
-        // Occupy a seat, waiting for follow-up.
+        if (isset($attach)) {
+            $this->register($attach);
+        }
     }
 
     /**
      * @param $attach
      */
-    public function register(&$attach)
+    public function register($attach)
     {
         // register
         foreach (get_class_methods($attach) as $method) {
-            if (($_method = substr($method, 7)) === false) {
+            // cut
+            $mtd = substr(
+                $method, 7
+            );
+
+            // check
+            if ($mtd === false) {
                 continue;
             }
+
             switch (substr($method, 0, 7)) {
                 case 'metcip_':
-                    $this->addMetcip($_method);
+                    $this->metcips[] = $mtd;
                 case 'method_':
-                    $this->addMethod($_method, [&$attach, $method]);
-                    break;
-                case 'cipher_':
-                    $this->addCipher($_method, [&$attach, $method]);
+                    $this->methods[$mtd] = $method;
                     break;
                 case 'hooker_':
-                    $this->addHook($_method, [&$attach, $method]);
+                    $this->hookers[$mtd] = $method;
             }
         }
-        unset($_method);
+        unset($mtd);
     }
 
     /**
-     * 服务入口
+     * 接收
      *
-     * @access private
-     * @param mixed $request 输入参数
+     * @param $attach
+     * @param $request
      * @return void
      * @throws Exception
      */
-    public function launch($request = false)
+    public function receive($attach, $request)
     {
-        if ($request === false) {
-            $request = file_get_contents("php://input");
-            if (!$request) {
-                die('Kat server accepts POST requests only');
-            }
-        }
-
-        // hook launch
-        $this->hook('launch', [$request]);
+        // start
+        $this->hooker(
+            $attach, 'start'
+        );
 
         try {
             // read
-            $this->data = kat_decode($request);
+            $kat = kat_decode(
+                $request
+            );
 
-            // check method
-            $this->checkMethod($this->data['method']);
-
-            // hook before
-            $this->hook('before', [
-                $this->data['method'], &$this->data['request']
-            ]);
-
-            // security
-            if ($this->hasMetcip($this->data['method'])) {
-                // ready
-                $this->cipher('ready', [
-                    $this->data['method']
-                ]);
-
-                // access
-                $this->cipher('access', [
-                    $this->data['method'], &$this->data['auth']
-                ]);
-
-                // accept
-                $this->cipher('accept', [
-                    &$this->data['cert'], &$this->data['request']
-                ]);
+            // check data
+            if (!is_array($kat)) {
+                $kat = null;
+                throw new Exception(
+                    'The data is empty or illegal'
+                );
             }
 
-            // reread
-            $this->data['request'] = kat_decode($this->data['request']);
-
-        } catch (Exception $e) {
-            $this->onError(
-                $this->data['method'], $e
+            // check method
+            $this->checkMethod(
+                $kat['method']
             );
-        }
 
-        // callback
-        try {
-            $callback = $this->callnc(
-                $this->data['method'],
-                $this->data['request']
+            // ready
+            $this->hooker($attach,
+                'ready', [&$kat]
+            );
+
+            // security
+            if ($this->hasMetcip($kat['method'])) {
+                // accept
+                $this->hooker($attach,
+                    'accept', [&$kat]
+                );
+            }
+
+            // check request
+            if (!is_string($kat['request'])) {
+                throw new Exception(
+                    'The data is not a string'
+                );
+            }
+
+            // decode
+            $kat['request'] = kat_decode(
+                $kat['request']
+            );
+
+            // check request
+            if (!is_array($kat['request'])) {
+                throw new Exception(
+                    'The data is illegal'
+                );
+            }
+
+            // hook before
+            $this->hooker($attach,
+                'before', [&$kat]
+            );
+
+            // callback
+            $kat['response'] = $this->callMethod([$attach,
+                $this->methods[$kat['method']]
+            ], $kat['request']);
+
+            // isolate
+            unset($kat['request']);
+
+            // hook after
+            $this->hooker($attach,
+                'after', [&$kat]
             );
 
             // response
-            $this->onResponse(
-                $this->data['method'],
-                $callback, 'kat'
+            $this->onResponse($attach,
+                $kat, 'kat'
             );
+
+            // isolate
+            unset($kat['response']);
+
         } catch (Exception $e) {
+            // check data
+            if (empty($kat)) {
+                // thread
+                $kat = [
+                    'accept' => 'kat-ins',
+                    'method' => 'kat-test'
+                ];
+            }
+
+            // error
+            $kat['response'] = $e;
+
+            // error
             $this->onError(
-                $this->data['method'], $e
+                $attach, $kat
             );
         }
-    }
 
-    /**
-     * 内部方法
-     *
-     * @access private
-     * @param string $method 方法名
-     * @param null $args 参数
-     * @return mixed
-     * @throws Exception
-     */
-    private function cipher($method, $args = NULL)
-    {
-        if ($this->hasCipher($method)) {
-            return $this->callMethod(
-                $this->ciphers[$method], $args
-            );
-        }
-        return NULL;
-    }
-
-    /**
-     * 呼叫内部方法
-     *
-     * @access private
-     * @param string $method 方法名
-     * @param null $args 参数
-     * @return mixed
-     * @throws Exception
-     */
-    private function callnc($method, $args = NULL)
-    {
-        if ($this->hasMethod($method)) {
-            return $this->callMethod(
-                $this->methods[$method], $args
-            );
-        }
-        throw new Exception('Server error, method does not exist', 406);
+        // isolate
+        unset($kat, $request);
     }
 
     /**
      * HOOK内部方法
      *
-     * @access private
+     * @param $attach
      * @param string $method 方法名
-     * @param null $args 参数
+     * @param mixed $args 参数
      * @return mixed
      * @throws Exception
      */
-    private function hook($method, $args = NULL)
+    protected function hooker($attach, $method, $args = [])
     {
-        if ($this->hasHook($method)) {
-            return $this->callMethod(
-                $this->hooks[$method], $args
-            );
+        if ($this->hasHooker($method)) {
+            return $this->callMethod([
+                $attach, $this->hookers[$method]
+            ], $args);
         }
-        return NULL;
+
+        return null;
     }
 
     /**
-     * response
-     *
-     * @param $method
-     * @param $response
+     * @param $attach
+     * @param $data
      * @param string $name
      * @throws Exception
      */
-    private function onResponse($method, $response, $name = 'err')
+    protected function onResponse($attach, $data, $name = 'err')
     {
         //callback
         $callback = [
-            'method' => $method,
-            'response' => kat_encode($response)
+            'accept' => $data['accept'],
+            'method' => $data['method'],
+            'response' => kat_encode(
+                $data['response']
+            )
         ];
 
+        // isolate
+        unset($data['response']);
+
         // challenge
-        if ($this->hasMetcip($this->data['method'])) {
-            $this->cipher('challenge', [
-                $method, &$callback
+        if ($this->hasMetcip($data['method'])) {
+            $this->hooker($attach, 'challenge', [
+                $data, &$callback
             ]);
         }
 
-        $kat = kat_encode($callback, $name);
+        // encode
+        $kat = kat_encode(
+            $callback, $name
+        );
+
+        // isolate
+        unset($callback);
 
         // hook after
-        $this->hook('after', [
-            $method, &$kat
-        ]);
+        $this->hooker($attach, 'end', [&$kat, [
+            'Kat' => Kat_Server::VERSION,
+            'Content-Type' => 'text/kat'
+        ]]);
 
-        // kat
-        header('Kat: ' . Kat_Server::VERSION);
-        header('Date: ' . date('r'));
-        header('Connection: close');
-        header('Content-Length: ' . strlen($kat));
-        header('Content-Type: text/kat');
-        exit($kat);
+        // isolate
+        unset($data, $kat);
     }
 
     /**
-     * response
-     *
-     * @param $method
-     * @param Exception $error
+     * @param $attach
+     * @param $data
      * @throws Exception
      */
-    private function onError($method, $error)
+    protected function onError($attach, $data)
     {
-        $this->onResponse($method, $error,
-            $error->getCode() > 100 && $error->getCode() < 1000 ? 'kat' : 'err'
+        $this->onResponse($attach, $data,
+            $data['response']->getCode() > 99 ? 'kat' : 'err'
         );
     }
 
     /**
-     * @param $method
-     * @param null $args
-     * @return void|mixed
+     * @param array $method
+     * @param mixed $args
+     * @return mixed
      * @throws Exception
      */
-    public function callMethod($method, $args = NULL)
+    public function callMethod($method, $args = [])
     {
+        // check
         if (is_callable($method)) {
-            return is_array($args) ? call_user_func_array($method, $args) : call_user_func($method);
-        } else if (strpos($method, 'system')) {
-            return $this->callMethod([
-                &$this, substr($method, 7)
-            ], $args);
+            // hook
+            return call_user_func_array(
+                $method, $args
+            );
         }
-        throw new Exception('Server error, method does not exist', 404);
+
+        throw new Exception(
+            'Server error, method does not exist'
+        );
     }
 
     /**
      * 是否存在HOOK
      *
-     * @access private
      * @param string $method 方法名
-     * @return mixed
+     * @return bool
      */
-    private function hasHook($method)
+    protected function hasHooker($method)
     {
-        return array_key_exists($method, $this->hooks);
-    }
-
-    /**
-     * 是否存在签名
-     *
-     * @access private
-     * @param string $method 方法名
-     * @return mixed
-     */
-    private function hasCipher($method)
-    {
-        return array_key_exists($method, $this->ciphers);
+        return isset($this->hookers[$method]);
     }
 
     /**
      * 是否存在方法
      *
-     * @access private
      * @param string $method 方法名
-     * @return mixed
+     * @return bool
      */
-    private function hasMethod($method)
+    protected function hasMethod($method)
     {
-        return array_key_exists($method, $this->methods);
+        return isset($this->methods[$method]);
     }
 
     /**
      * 是否签名方法
      *
-     * @access private
      * @param string $method 方法名
-     * @return mixed
+     * @return bool
      */
-    private function hasMetcip($method)
+    protected function hasMetcip($method)
     {
         return in_array($method, $this->metcips);
     }
@@ -354,100 +335,18 @@ class Kat_Server
     /**
      * 是否合法方法
      *
-     * @access private
      * @param string $method 方法名
      * @throws Exception
      */
-    private function checkMethod($method)
+    protected function checkMethod($method)
     {
-        if (preg_match("/^[0-9a-zA-Z_]{4,}$/", $method) && $this->hasMethod($method)) {
+        if (preg_match("/^[0-9a-zA-Z_]{4,}$/", $method)
+            && $this->hasMethod($method)) {
             return;
         }
-        throw new Exception('Server error, method does not exist', 404);
-    }
 
-    /**
-     * 添加回调
-     *
-     * @param $name
-     * @param $method
-     */
-    public function addMethod($name, $method)
-    {
-        $this->methods[$name] = $method;
-    }
-
-    /**
-     * @param $methods
-     */
-    public function addMethods($methods)
-    {
-        $this->methods = array_merge($this->methods, $methods);
-    }
-
-    /**
-     * @param $method
-     */
-    public function addMetcip($method)
-    {
-        $this->metcips[] = $method;
-    }
-
-    /**
-     * @param $methods
-     */
-    public function addMetcips($methods)
-    {
-        $this->metcips = array_merge($this->metcips, $methods);
-    }
-
-    /**
-     * @param $name
-     * @param $method
-     */
-    public function addCipher($name, $method)
-    {
-        $this->ciphers[$name] = $method;
-    }
-
-    /**
-     * @param $ciphers
-     */
-    public function addCiphers($ciphers)
-    {
-        $this->ciphers = array_merge($this->ciphers, $ciphers);
-    }
-
-    /**
-     * @param $ciphers
-     */
-    public function setCiphers($ciphers)
-    {
-        $this->ciphers = $ciphers;
-    }
-
-    /**
-     * @param $hook
-     * @param $method
-     */
-    public function addHook($hook, $method)
-    {
-        $this->hooks[$hook] = $method;
-    }
-
-    /**
-     * @param $hooks
-     */
-    public function addHooks($hooks)
-    {
-        $this->hooks = array_merge($this->hooks, $hooks);
-    }
-
-    /**
-     * @param $hooks
-     */
-    public function setHooks($hooks)
-    {
-        $this->hooks = $hooks;
+        throw new Exception(
+            'Server error, method does not exist'
+        );
     }
 }

@@ -103,7 +103,7 @@ class Nabo_Action extends Typecho_Widget implements Widget_Interface_Do
      */
     private function throwRedirect($notice, $typeFix = 'error')
     {
-        $this->widget('Widget_Notice')->set(_t($notice), NULL, $typeFix);
+        $this->widget('Widget_Notice')->set(_t($notice), 'notice', $typeFix);
         $this->response->redirect(Typecho_Common::url('extending.php?panel=Nabo%2FManage.php', $this->options->adminUrl));
     }
 

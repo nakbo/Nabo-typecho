@@ -5,18 +5,18 @@
  *
  * @package Nabo
  * @author 南博工作室
- * @version 4.0
+ * @version 4.1
  * @link https://github.com/krait-team/Nabo-typecho
  */
 class Nabo_Plugin implements Typecho_Plugin_Interface
 {
     const MANIFEST = [
-        'engineName' => 'typecho',
-        'versionCode' => 20,
-        'versionName' => '4.0'
+        'engine' => 'typecho',
+        'versionCode' => 25,
+        'versionName' => '4.1'
     ];
-    const ROUTE_SERVICE = "/nabo/service",
-        ROUTE_USER = "/nabo/user", ROUTE_UPLOAD = "/nabo/upload";
+    const ROUTE_SERVICE = '/nabo/service',
+        ROUTE_USER = '/nabo/user', ROUTE_UPLOAD = '/nabo/upload';
 
     /**
      *
@@ -26,6 +26,7 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
     public static function begin()
     {
         include_once 'Kat/Kat.php';
+        include_once 'Kat/Plus.php';
     }
 
     /**
@@ -63,7 +64,6 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
 
         if (strpos($adapterName, 'Mysql') !== false) {
             if (!$db->fetchRow($db->query("SHOW TABLES LIKE '{$prefix}nabo';", Typecho_Db::READ))) {
-                $charset = $db->getConfig()['charset'] ?: 'utf8';
                 $db->query('CREATE TABLE IF NOT EXISTS `' . $prefix . 'nabo` (
 		            `uid` INT(11) UNSIGNED NOT NULL,
 		            `uin` INT(10) UNSIGNED DEFAULT 0,
@@ -75,7 +75,7 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
 		            `allowPush` INT(1) UNSIGNED DEFAULT 0,
 		            PRIMARY KEY (`uid`),
 		            KEY `uin` (`uin`)
-		        ) DEFAULT CHARSET=' . $charset);
+		        )');
             }
         } else if (strpos($adapterName, 'SQLite') !== false) {
             if (!$db->fetchRow($db->query("SELECT name FROM sqlite_master WHERE TYPE='table' AND name='{$prefix}nabo';", Typecho_Db::READ))) {
@@ -153,14 +153,14 @@ class Nabo_Plugin implements Typecho_Plugin_Interface
             'allowMultivia', array(
             '0' => '关闭',
             '1' => '打开',
-        ), '0', '密钥密码共存', '关闭后若开启了密钥登录, 就只能用密钥登录. 开启后, 既可以使用密钥登录(扫码), 也可以使用密码登录');
+        ), '0', '密钥密码共存', '关闭后若开启了密钥登录, 就只能用密钥登录(签名). 开启后, 既可以使用密钥登录(即扫码), 也可以使用密码登录(令牌)');
         $form->addInput($enable);
 
         $enable = new Typecho_Widget_Helper_Form_Element_Radio(
             'allowSleep', array(
             '0' => '关闭',
             '1' => '打开',
-        ), '1', '密匙错误休眠', '开启后, 在南博KAT-RPC通道里, 若密码或密钥不正确, 将会休眠6秒以防止穷举爆破, 即整个过程延时6秒');
+        ), '1', '身份错误休眠', '开启后, 在南博KAT-RPC通道里, 若令牌(密码)或签名(密钥)不正确, 将会休眠6秒以防止穷举爆破, 即整个过程延时6秒');
         $form->addInput($enable);
 
         $enable = new Typecho_Widget_Helper_Form_Element_Radio(

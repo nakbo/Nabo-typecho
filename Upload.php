@@ -10,28 +10,69 @@
 class Nabo_Upload extends Widget_Upload implements Widget_Interface_Do
 {
     /**
-     * 上传
-     *
-     * @access public
-     * @return void
+     * @target launch
+     */
+    public function action()
+    {
+        if (!$this->request->is('uin&name&token')) {
+            $this->response('缺少必要参数');
+        }
+
+        $liteuser = Typecho_Widget::widget('Nabo_User');
+        $liteuser->identity([
+            'uin' => $this->request->get('uin'),
+            'name' => $this->request->get('name'),
+            'token' => $this->request->get('token')
+        ]);
+
+        try {
+            $liteuser->register();
+            $this->user->execute();
+        } catch (Exception $e) {
+            $this->response(
+                $e->getMessage()
+            );
+        }
+
+        // check able
+        if (!$this->user->pass('contributor', true)) {
+            $this->response('权限不足');
+        }
+
+        try {
+            if ($this->request->is('do=modify&cid')) {
+                $this->modify();
+            } else {
+                $this->upload();
+            }
+        } catch (Exception $e) {
+            $this->response(
+                $e->getMessage()
+            );
+        }
+    }
+
+    /**
+     * @target upload
      */
     public function upload()
     {
         if (empty($_FILES)) {
-            kat_response(['code' => 0, 'msg' => '不存在文件']);
+            $this->response('不存在文件');
         }
 
         // select
         $file = array_pop($_FILES);
         if ($file['error'] != 0 || !is_uploaded_file($file['tmp_name'])) {
-            kat_response(['code' => 0, 'msg' => '文件异常']);
+            $this->response('文件异常');
         }
 
         // upload
-        if (($result = parent::uploadHandle($file)) === false) {
-            kat_response(['code' => 0, 'msg' => '上传失败']);
+        if (empty($result = parent::uploadHandle($file))) {
+            $this->response('上传失败');
         }
 
+        // insert
         $id = $this->insert(array(
             'title' => $result['name'],
             'slug' => $result['name'],
@@ -54,28 +95,24 @@ class Nabo_Upload extends Widget_Upload implements Widget_Interface_Do
         // hook
         $this->pluginHandle('Widget_Upload')->upload($this);
 
-        kat_response(['code' => 1, 'msg' => '上传成功',
-            'data' => Nabo_Format::mediaOf($media)
-        ]);
+        $this->response(
+            '上传成功', 1,
+            Nabo_Format::media($media)
+        );
     }
 
     /**
-     * 更新
-     *
-     * @access public
-     * @return void
+     * @target modify
      */
     public function modify()
     {
-        $this->response->throwJson(['code' => 0, 'msg' => '暂时不支持更新文件']);
+        $this->response(
+            '暂时不支持更新文件'
+        );
     }
 
     /**
-     * 重载
-     *
-     * @access public
-     * @param boolean $run 是否执行
-     * @return void
+     * @param false $run
      */
     public function execute($run = false)
     {
@@ -87,40 +124,16 @@ class Nabo_Upload extends Widget_Upload implements Widget_Interface_Do
     }
 
     /**
-     * 初始化函数
-     *
-     * @access public
-     * @return void
-     * @throws Typecho_Widget_Exception
-     * @throws Typecho_Exception
+     * @param $msg
+     * @param int $code
+     * @param null $data
      */
-    public function action()
+    public function response($msg, $code = 0, $data = null)
     {
-        if (!$this->request->is("uin&token")) {
-            kat_response(['code' => 0, 'msg' => '缺少必要参数']);
-        }
-
-        Typecho_Widget::widget('Nabo_User')->to($liteuser);
-        $liteuser->identity([
-            'uin' => $this->request->get('uin'),
-            'token' => $this->request->get('token')
+        kat_response([
+            'code' => $code,
+            'msg' => $msg,
+            'data' => $data
         ]);
-
-        try {
-            $liteuser->challenge();
-            $this->user->execute();
-        } catch (Exception $e) {
-            kat_response(['code' => 0, 'msg' => $e->getMessage()]);
-        }
-
-        if (!$this->user->pass('contributor', true)) {
-            kat_response(['code' => 0, 'msg' => '权限不足']);
-        }
-
-        if ($this->request->is('do=modify&cid')) {
-            $this->modify();
-        } else {
-            $this->upload();
-        }
     }
 }

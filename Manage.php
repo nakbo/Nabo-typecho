@@ -29,7 +29,7 @@ include 'menu.php';
                         <?php $manifest = Nabo_Plugin::MANIFEST; ?>
                         <tr>
                             <td>引擎</td>
-                            <td><?= $manifest['engineName']; ?></td>
+                            <td><?= $manifest['engine']; ?></td>
                         </tr>
                         <tr>
                             <td>插件版本</td>
