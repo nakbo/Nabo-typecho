@@ -28,9 +28,9 @@ class Crash extends Exception
     /**
      * @param string $message
      * @param int $code
-     * @param Throwable|null $previous
+     * @param Throwable $previous
      */
-    public function __construct($message = '', $code = 500, Throwable $previous = null)
+    public function __construct($message = '', $code = 500, $previous = null)
     {
         parent::__construct($message, $code, $previous);
     }
@@ -57,7 +57,7 @@ class KatAry
     /**
      * @param $alias
      */
-    public function alias($alias): void
+    public function alias($alias)
     {
         $this->alias = $alias;
     }
@@ -119,7 +119,7 @@ class KatAry
     /**
      * @return null|string
      */
-    public function class()
+    public function space()
     {
         return $this->alias;
     }
@@ -154,7 +154,7 @@ class KatAny
     /**
      * @param $alias
      */
-    public function alias($alias): void
+    public function alias($alias)
     {
         $this->alias = $alias;
     }
@@ -208,7 +208,7 @@ class KatAny
     /**
      * @return null|string
      */
-    public function class()
+    public function space()
     {
         return $this->alias;
     }

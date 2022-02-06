@@ -276,7 +276,7 @@ class Nabo_Service extends Widget_Abstract_Contents implements Widget_Interface_
         $this->check_access();
 
         return [
-            'creative' => Nabo_Format::create_words_size(
+            'creative' => Nabo_Format::create_words(
                 $this->liteuser->uid
             )
         ];

@@ -14,16 +14,21 @@ class Nabo_Message extends Typecho_Widget
 
     /**
      * @param $id
-     * @param array $data
+     * @param $data
      * @param bool $respond
      * @return bool
-     * @throws Typecho_Db_Exception
      */
     public static function send($id, $data, $respond = true)
     {
         $db = Typecho_Db::get();
-        if (empty($user = $db->fetchRow($db->select()
-            ->from('table.nabo')->where($id < 100001 ? 'uid = ?' : 'uin = ?', $id)))) {
+
+        $user = $db->fetchRow(
+            $db->select()->from('table.nabo')
+                ->where($id < 100001 ? 'uid = ?' : 'uin = ?', $id)
+        );
+
+        // check
+        if (empty($user)) {
             return false;
         }
 
@@ -33,8 +38,10 @@ class Nabo_Message extends Typecho_Widget
         }
 
         // check
-        if (empty($user['uin']) || empty($data['title']) || empty($data['message'])
-            || strlen($user['pushKey']) < 32) {
+        if (empty($user['uin']) ||
+            empty($data['title']) ||
+            empty($data['message']) ||
+            strlen($user['pushKey']) < 32) {
             return false;
         }
 

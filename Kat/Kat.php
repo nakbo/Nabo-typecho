@@ -205,7 +205,7 @@ class Katy
             case 'KatAry':
             {
                 $this->add(
-                    $any->class() ?: 'L'
+                    $any->space() ?: 'L'
                 )->alias($name);
                 $this->add('{');
                 foreach ($any->entry() as $key => $value) {
@@ -217,7 +217,7 @@ class Katy
             case 'KatAny':
             {
                 $this->add(
-                    $any->class() ?: 'M'
+                    $any->space() ?: 'M'
                 )->alias($name);
                 $this->add('{');
                 foreach ($any->entry() as $key => $value) {
@@ -318,7 +318,7 @@ class Kat_Parser
     /**
      * @param Kat_Parser $parser
      */
-    public static function retreat($parser): void
+    public static function retreat($parser)
     {
         if (isset($parser) && count(self::$POOL) < 32) {
             $parser->reuse();

@@ -505,18 +505,27 @@ class Nabo_Format
      * @param $uid
      * @return int
      */
-    public static function create_words_size($uid)
+    public static function create_words($uid)
     {
-        $chars = 0;
+        $count = 0;
         $db = Typecho_Db::get();
-        $select = $db->select('text')
-            ->from('table.contents')
-            ->where('authorId = ?', $uid);
-        $rows = $db->fetchAll($select);
-        foreach ($rows as $row) {
-            $chars += mb_strlen($row['title'], 'UTF-8');
-            $chars += mb_strlen($row['text'], 'UTF-8');
+        $driver = $db->getAdapterName();
+
+        if (strpos($driver, 'Mysql') !== false) {
+            $select = $db->select('SUM(char_length(title) + char_length(text)) AS creative')
+                ->from('table.contents')->where('authorId = ?', $uid);
+            foreach ($db->fetchAll($select) as $row) {
+                $count += $row['creative'];
+            }
+        } else if (strpos($driver, 'SQLite') !== false) {
+            $select = $db->select('title', 'text')
+                ->from('table.contents')
+                ->where('authorId = ?', $uid);
+            foreach ($db->fetchAll($select) as $row) {
+                $count += mb_strlen($row['title'], 'UTF-8');
+                $count += mb_strlen($row['text'], 'UTF-8');
+            }
         }
-        return $chars;
+        return $count;
     }
 }
